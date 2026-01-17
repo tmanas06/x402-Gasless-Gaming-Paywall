@@ -9,6 +9,9 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
+  async rewrites() {
+    return [{ source: '/favicon.ico', destination: '/placeholder-logo.png' }]
+  },
 }
 
 export default nextConfig

@@ -10,6 +10,7 @@ export const metadata: Metadata = {
   title: 'Gaming DApp - Blockchain Gaming Platform',
   description: 'Experience fun and interactive blockchain gaming on Cronos!',
   generator: 'Next.js',
+  icons: { icon: '/placeholder-logo.png' },
 }
 
 export const viewport = {
