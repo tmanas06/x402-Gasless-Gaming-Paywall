@@ -40,7 +40,7 @@ export default function MainNavbar() {
           <div className="flex items-center">
             <Link href="/" className="flex-shrink-0 flex items-center">
               <span className="text-xl font-bold bg-gradient-to-r from-purple-400 to-blue-500 bg-clip-text text-transparent">
-                Monad Gaming DApp
+                Cronos Gaming DApp
               </span>
             </Link>
             {!isGamePage && (

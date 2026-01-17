@@ -7,11 +7,16 @@ import MainNavbar from '@/components/MainNavbar'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'Monad Gaming DApp - Blockchain Gaming Platform',
-  description: 'Experience fun and interactive blockchain gaming on Monad!',
+  title: 'Gaming DApp - Blockchain Gaming Platform',
+  description: 'Experience fun and interactive blockchain gaming on Cronos!',
   generator: 'Next.js',
+}
+
+export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
   themeColor: '#111827',
-  viewport: 'width=device-width, initial-scale=1, maximum-scale=1',
 }
 
 export default function RootLayout({

@@ -10,10 +10,10 @@ export default function HomePage() {
       <div className="container mx-auto px-4 py-20">
         <div className="max-w-4xl mx-auto text-center">
           <h1 className="text-5xl md:text-6xl font-bold mb-6 bg-gradient-to-r from-purple-400 to-blue-500 bg-clip-text text-transparent">
-            Monad Gaming DApp
+            Cronos Gaming DApp
           </h1>
           <p className="text-xl text-gray-300 mb-12 max-w-2xl mx-auto">
-            Experience the future of blockchain gaming with fast, fun, and interactive games on Monad!
+            Experience the future of blockchain gaming with fast, fun, and interactive games on Cronos!
           </p>
           
           <div className="flex flex-col sm:flex-row justify-center gap-4 mb-16">

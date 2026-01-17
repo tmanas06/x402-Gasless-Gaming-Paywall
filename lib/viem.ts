@@ -5,7 +5,10 @@ import { privateKeyToAccount } from "viem/accounts";
 import { loadKey } from "./keyCache";
 
 // Contract configuration
-export const CONTRACT_ADDRESS = "0x3Bc9FA89c0fA5E8a2fA586029F91CC51E28E4C44" as const;
+// TODO: Update this address after deploying the contract
+// Run: cd contracts && npm run deploy
+// Then copy the deployed address here
+export const CONTRACT_ADDRESS = "0x33c070F5225E8d5715692968183031dF1B401d44" as const;
 export const CONTRACT_ABI = [
   {
     inputs: [],
@@ -179,15 +182,30 @@ export const CONTRACT_ABI = [
   }
 ] as const;
 
-export const monadTestnet = defineChain({
-  id: 10143,                         // official test-net ID :contentReference[oaicite:6]{index=6}
-  name: "Monad Testnet",
-  nativeCurrency: { name: "USD", symbol: "USD", decimals: 6 },
-  rpcUrls: { default: { http: ["https://testnet-rpc.monad.xyz"] } },
+// Cronos Testnet configuration
+export const cronosTestnet = defineChain({
+  id: 338, // Cronos Testnet chain ID
+  name: "Cronos Testnet",
+  nativeCurrency: { 
+    name: "Cronos", 
+    symbol: "CRO", 
+    decimals: 18 
+  },
+  rpcUrls: { 
+    default: { 
+      http: ["https://evm-t3.cronos.org"] 
+    } 
+  },
+  blockExplorers: {
+    default: {
+      name: "Cronos Explorer",
+      url: "https://testnet.cronoscan.com",
+    },
+  },
 });
 
 export const publicClient = createPublicClient({
-  chain: monadTestnet,
+  chain: cronosTestnet,
   transport: http(),
 });
 
@@ -212,11 +230,11 @@ export type ContractFunction = {
 };
 
 export function getSigner() {
-    const pk = loadKey();                         // <─ from utils/keyCache
+    const pk = loadKey();
     if (!pk) throw new Error("No cached private key");
-    const account = privateKeyToAccount(pk as `0x${string}`);            // viem helper :contentReference[oaicite:2]{index=2}
+    const account = privateKeyToAccount(pk as `0x${string}`);
     return createWalletClient({
-      chain: monadTestnet,
+      chain: cronosTestnet,
       account,
       transport: http(),
     });

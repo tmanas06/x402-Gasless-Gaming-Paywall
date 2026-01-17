@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "ts-node src/server.ts",
     "build": "tsc",
-    "start": "node dist/server.js"
+    "start": "node dist/server.js",
+    "prestart": "npm run build"
   },
   "keywords": ["cronos", "x402", "gasless", "game"],
   "author": "",

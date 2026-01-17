@@ -1,4 +1,4 @@
-const SLOT = "monad_pk";
+const SLOT = "cronos_pk";
 
 export const cacheKey = (hex: string) => {
   if (typeof window !== 'undefined') {

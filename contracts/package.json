@@ -1,0 +1,20 @@
+{
+  "name": "game-rewards-contracts",
+  "version": "1.0.0",
+  "description": "Smart contracts for game rewards on Cronos testnet",
+  "scripts": {
+    "compile": "hardhat compile",
+    "deploy": "hardhat run scripts/deploy.js --network cronosTestnet && node scripts/update-contract-address.js",
+    "deploy:mock-usdc": "hardhat run scripts/deploy-mock-usdc.js --network cronosTestnet",
+    "deploy:all": "npm run deploy:mock-usdc && npm run deploy",
+    "fund-treasury": "hardhat run scripts/fund-treasury.js --network cronosTestnet",
+    "verify": "hardhat verify --network cronosTestnet",
+    "update-address": "node scripts/update-contract-address.js"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^4.0.0",
+    "@openzeppelin/contracts": "^5.0.0",
+    "hardhat": "^2.19.0",
+    "dotenv": "^16.3.1"
+  }
+}

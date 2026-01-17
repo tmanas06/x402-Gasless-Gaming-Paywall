@@ -43,6 +43,28 @@ class AutoPayAgent {
       throw new Error("AGENT_PRIVATE_KEY not set in .env");
     }
 
+    // Validate that private key is not a placeholder
+    if (privateKey.includes("your_private_key_here") || privateKey.length < 64) {
+      throw new Error(
+        "AGENT_PRIVATE_KEY is not set correctly. Please set a valid private key in agent/.env file.\n" +
+        "You can generate one using: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\""
+      );
+    }
+
+    // Validate private key format
+    try {
+      // Check if it's a valid hex string (with or without 0x prefix)
+      const cleanKey = privateKey.startsWith("0x") ? privateKey.slice(2) : privateKey;
+      if (!/^[0-9a-fA-F]{64}$/.test(cleanKey)) {
+        throw new Error("Invalid private key format");
+      }
+    } catch (error) {
+      throw new Error(
+        `Invalid AGENT_PRIVATE_KEY format. It must be a 64-character hex string (with or without 0x prefix).\n` +
+        `Error: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+
     this.provider = new ethers.JsonRpcProvider(rpcUrl);
     this.wallet = new ethers.Wallet(privateKey, this.provider);
     this.gameApiUrl = process.env.GAME_API_URL || "http://localhost:5000";

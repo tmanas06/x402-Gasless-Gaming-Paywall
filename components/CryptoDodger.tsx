@@ -236,6 +236,15 @@ const CryptoDodger = () => {
 
   const sendTx = async (event: 'coin' | 'bonus', score: number) => {
     try {
+      // Check if user is authenticated before sending transaction
+      const { loadKey } = await import('@/lib/keyCache');
+      const cachedKey = loadKey();
+      
+      if (!cachedKey) {
+        // User not authenticated, skip transaction
+        return;
+      }
+      
       const signer = getSigner()
       const payload = {
         gid: gameIdRef.current ?? crypto.randomUUID(),
@@ -259,7 +268,10 @@ const CryptoDodger = () => {
         gas,
       })
     } catch (err) {
-      console.error("tx error", err)
+      // Silently fail if user is not authenticated
+      if (err instanceof Error && !err.message.includes('No cached private key')) {
+        console.error("tx error", err)
+      }
     }
   }
 

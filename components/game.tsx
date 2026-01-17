@@ -53,7 +53,7 @@ interface GameState {
   hasClaimedReward?: boolean
 }
 
-export default function MonadGamingDApp() {
+export default function CronosGamingDApp() {
   const [currentView, setCurrentView] = useState<"menu" | "game">("menu")
   const [gameState, setGameState] = useState<GameState>({
     bubbles: [],
@@ -70,22 +70,35 @@ export default function MonadGamingDApp() {
   const [rewardAmount, setRewardAmount] = useState<number | null>(null)
   const [isClaiming, setIsClaiming] = useState(false)
 
-  // Check if player has claimed reward
+  // Check if player has claimed reward (only when authenticated)
   useEffect(() => {
     const checkClaimStatus = async () => {
       try {
-        const signer = await getSigner()
-        const hasClaimed = await signer.account.address
-          ? await publicClient.simulateContract({
-              address: CONTRACT_ADDRESS,
-              abi: CONTRACT_ABI,
-              functionName: 'hasClaimed',
-              args: [signer.account.address]
-            })
-          : false
-        setGameState(prev => ({ ...prev, hasClaimedReward: hasClaimed }))
+        // Check if key exists before trying to get signer
+        const { loadKey } = await import('@/lib/keyCache');
+        const cachedKey = loadKey();
+        
+        if (!cachedKey) {
+          // User not authenticated yet, skip check
+          return;
+        }
+        
+        const signer = getSigner();
+        if (signer?.account?.address) {
+          const hasClaimed = await publicClient.simulateContract({
+            address: CONTRACT_ADDRESS,
+            abi: CONTRACT_ABI,
+            functionName: 'hasClaimed',
+            args: [signer.account.address]
+          });
+          setGameState(prev => ({ ...prev, hasClaimedReward: hasClaimed }))
+        }
       } catch (error) {
-        console.error('Error checking claim status:', error)
+        // Silently fail if user is not authenticated
+        // This is expected before login
+        if (error instanceof Error && !error.message.includes('No cached private key')) {
+          console.error('Error checking claim status:', error)
+        }
       }
     }
     checkClaimStatus()
@@ -93,7 +106,7 @@ export default function MonadGamingDApp() {
 
   // Calculate dynamic reward amount based on score
   const calculateRewardAmount = useCallback((score: number) => {
-    // Base reward amount (0.001 USDT)
+    // Base reward amount (0.001 USDC)
     const baseReward = 0.001;
     // Reward increment per 40 points
     const rewardPer40Points = 0.001;
@@ -114,7 +127,16 @@ export default function MonadGamingDApp() {
   const claimReward = async () => {
     try {
       setIsClaiming(true)
-      const signer = await getSigner()
+      
+      // Check if user is authenticated
+      const { loadKey } = await import('@/lib/keyCache');
+      const cachedKey = loadKey();
+      
+      if (!cachedKey) {
+        throw new Error('Please connect your wallet first');
+      }
+      
+      const signer = getSigner()
       const tx = await signer.writeContract({
         address: CONTRACT_ADDRESS,
         abi: CONTRACT_ABI,
@@ -137,6 +159,7 @@ export default function MonadGamingDApp() {
       })
     } catch (error) {
       console.error('Error claiming reward:', error)
+      // You might want to show a toast/notification here
     } finally {
       setIsClaiming(false)
     }
@@ -247,6 +270,15 @@ export default function MonadGamingDApp() {
 
   const sendTapTx = async (bubble: Bubble, score: number) => {
     try {
+      // Check if user is authenticated before sending transaction
+      const { loadKey } = await import('@/lib/keyCache');
+      const cachedKey = loadKey();
+      
+      if (!cachedKey) {
+        // User not authenticated, skip transaction
+        return;
+      }
+      
       const signer = getSigner()
       const payload = {
         gid: gameIdRef.current ?? crypto.randomUUID(),
@@ -267,7 +299,10 @@ export default function MonadGamingDApp() {
         gas,
       })
     } catch (err) {
-      console.error("tap-tx error:", err)
+      // Silently fail if user is not authenticated
+      if (err instanceof Error && !err.message.includes('No cached private key')) {
+        console.error("tap-tx error:", err)
+      }
     }
   }
 
@@ -300,9 +335,12 @@ export default function MonadGamingDApp() {
           bubbleSpawnRef.current = null
         }
         setTimeout(() => {
-          if (gameState.isPlaying && !gameState.isPaused) {
-            bubbleSpawnRef.current = setInterval(spawnBubble, getBubbleSpawnRate(newScore)) as unknown as NodeJS.Timeout
-          }
+          setGameState((currentState) => {
+            if (currentState.isPlaying && !currentState.isPaused) {
+              bubbleSpawnRef.current = setInterval(spawnBubble, getBubbleSpawnRate(currentState.score)) as unknown as NodeJS.Timeout
+            }
+            return currentState;
+          });
         }, 5000)
       } else popSound.play()
 

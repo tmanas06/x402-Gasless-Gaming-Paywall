@@ -232,10 +232,10 @@ export default function SnakeGame() {
     // Draw food
     ctx.fillStyle = '#FF6B6B';
     ctx.fillRect(
-      foodRef.current.x * CELL_SIZE,
-      foodRef.current.y * CELL_SIZE,
-      CELL_SIZE - 1,
-      CELL_SIZE - 1
+      foodRef.current.x * cellSize,
+      foodRef.current.y * cellSize,
+      cellSize - 1,
+      cellSize - 1
     );
 
     // Draw snake
@@ -248,10 +248,10 @@ export default function SnakeGame() {
         ctx.fillStyle = '#4ECDC4';
       }
       ctx.fillRect(
-        segment.x * CELL_SIZE,
-        segment.y * CELL_SIZE,
-        CELL_SIZE - 1,
-        CELL_SIZE - 1
+        segment.x * cellSize,
+        segment.y * cellSize,
+        cellSize - 1,
+        cellSize - 1
       );
     });
 
@@ -261,17 +261,17 @@ export default function SnakeGame() {
     for (let i = 0; i < GRID_SIZE; i++) {
       // Vertical lines
       ctx.beginPath();
-      ctx.moveTo(i * CELL_SIZE, 0);
-      ctx.lineTo(i * CELL_SIZE, GRID_SIZE * CELL_SIZE);
+      ctx.moveTo(i * cellSize, 0);
+      ctx.lineTo(i * cellSize, GRID_SIZE * cellSize);
       ctx.stroke();
       
       // Horizontal lines
       ctx.beginPath();
-      ctx.moveTo(0, i * CELL_SIZE);
-      ctx.lineTo(GRID_SIZE * CELL_SIZE, i * CELL_SIZE);
+      ctx.moveTo(0, i * cellSize);
+      ctx.lineTo(GRID_SIZE * cellSize, i * cellSize);
       ctx.stroke();
     }
-  }, [gameOver, score, highScore]);
+  }, [gameOver, score, highScore, cellSize]);
 
   // Handle keyboard controls
   useEffect(() => {
