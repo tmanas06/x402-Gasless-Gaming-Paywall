@@ -3,8 +3,9 @@
 import { useEffect, useRef, useState, useCallback, useLayoutEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Play, RotateCcw, Smartphone, Wallet } from 'lucide-react';
+import { ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Play, RotateCcw, Smartphone, Wallet, Coins, Loader2 } from 'lucide-react';
 import { loadKey } from '@/lib/keyCache';
+import { getSigner } from '@/lib/viem';
 
 type Direction = 'UP' | 'DOWN' | 'LEFT' | 'RIGHT';
 type Position = { x: number; y: number };
@@ -23,8 +24,14 @@ export default function SnakeGame() {
   const [cellSize, setCellSize] = useState(20);
   const [showMobileControls, setShowMobileControls] = useState(false);
   const [touchStart, setTouchStart] = useState<{x: number, y: number} | null>(null);
-  const [userAddress, setUserAddress] = useState<string | null>(null);
+  const [userAddress, setUserAddress] = useState<`0x${string}` | null>(null);
+  const [rewardAmount, setRewardAmount] = useState<number | null>(null);
+  const [isClaiming, setIsClaiming] = useState(false);
+  const [hasClaimedReward, setHasClaimedReward] = useState(false);
+  const [rewardError, setRewardError] = useState<string | null>(null);
   const gameAreaRef = useRef<HTMLDivElement>(null);
+  
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
   
   const snakeRef = useRef<Position[]>([]);
   const foodRef = useRef<Position>({ x: 0, y: 0 });
@@ -396,14 +403,29 @@ export default function SnakeGame() {
     initGame();
   }, [initGame]);
 
-  // Check wallet connection
+  // Check wallet connection and calculate reward
   useEffect(() => {
-    const cachedKey = loadKey();
-    if (cachedKey) {
-      // User is connected - we can get address if needed
-      setUserAddress('connected');
-    }
+    const initializeUser = async () => {
+      try {
+        const cachedKey = loadKey();
+        if (cachedKey) {
+          const signer = getSigner();
+          if (signer?.account?.address) {
+            setUserAddress(signer.account.address);
+          }
+        }
+      } catch (error) {
+        // User not connected
+      }
+    };
+    initializeUser();
   }, []);
+
+  // Calculate reward amount: 100 points = 1 tCRO
+  useEffect(() => {
+    const tCROAmount = Math.floor(score / 100);
+    setRewardAmount(tCROAmount);
+  }, [score]);
 
   // Handle touch controls
   const handleTouchStart = (e: React.TouchEvent) => {
@@ -448,6 +470,12 @@ export default function SnakeGame() {
   // Handle keyboard controls
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Prevent default for arrow keys to stop page scrolling
+      const arrowKeys = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
+      if (arrowKeys.includes(e.key)) {
+        e.preventDefault();
+      }
+
       if (!isPlaying && (e.key === ' ' || e.key === 'Enter')) {
         startGame();
         return;
@@ -500,6 +528,62 @@ export default function SnakeGame() {
     initGame();
     setIsPlaying(true);
     setGameOver(false);
+    setHasClaimedReward(false);
+    setRewardError(null);
+  };
+
+  // Claim reward from backend
+  const claimReward = async () => {
+    try {
+      setIsClaiming(true);
+      setRewardError(null);
+
+      if (!userAddress) {
+        throw new Error('Please connect your wallet first');
+      }
+
+      if (score < 100) {
+        throw new Error('Minimum score of 100 required for rewards');
+      }
+
+      // Submit score to backend first
+      await fetch(`${API_URL}/api/score`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          address: userAddress,
+          score: score,
+          isPremium: false,
+          gameMode: 'snake'
+        })
+      });
+
+      // Claim reward from backend
+      const response = await fetch(`${API_URL}/api/claim-reward`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          address: userAddress,
+          score: score,
+          gameMode: 'snake'
+        })
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        setRewardError(null);
+        setHasClaimedReward(true);
+        alert(`🎉 Reward claimed! ${result.rewardAmountFormatted} tCRO sent to your wallet.\nTransaction: ${result.txHash}\nView on explorer: https://testnet.cronoscan.com/tx/${result.txHash}`);
+      } else {
+        throw new Error(result.error || 'Failed to claim reward');
+      }
+    } catch (error) {
+      console.error('Error claiming reward:', error);
+      setRewardError(error instanceof Error ? error.message : 'Failed to claim reward');
+    } finally {
+      setIsClaiming(false);
+    }
   };
 
   return (
@@ -531,11 +615,64 @@ export default function SnakeGame() {
         />
         
         {!isPlaying && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black bg-opacity-80 p-4">
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black bg-opacity-80 p-4 overflow-y-auto">
             {gameOver ? (
               <>
                 <h2 className="text-3xl font-bold text-red-500 mb-4 text-center">Game Over!</h2>
-                <p className="text-white text-xl mb-6">Your score: <span className="text-yellow-400">{score}</span></p>
+                <p className="text-white text-xl mb-4">Your score: <span className="text-yellow-400">{score}</span></p>
+                
+                {/* Reward Information */}
+                {score >= 100 && (
+                  <div className="mb-4 p-4 bg-purple-900/30 rounded-lg border border-purple-500/50 max-w-md">
+                    <div className="flex items-center justify-center gap-2 mb-2">
+                      <Coins className="h-5 w-5 text-yellow-400" />
+                      <p className="font-semibold text-white">
+                        {rewardAmount && rewardAmount > 0 
+                          ? `Reward Available: ${rewardAmount} tCRO`
+                          : 'No reward yet'}
+                      </p>
+                    </div>
+                    <p className="text-xs text-gray-400 mb-3 text-center">(100 points = 1 tCRO)</p>
+                    {rewardAmount && rewardAmount > 0 && !hasClaimedReward && (
+                      <Button
+                        onClick={claimReward}
+                        disabled={isClaiming || !userAddress || score < 100}
+                        className="w-full mt-2 bg-gradient-to-r from-yellow-500 to-orange-600 hover:opacity-90"
+                      >
+                        {isClaiming ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            Claiming...
+                          </>
+                        ) : (
+                          <>
+                            <Wallet className="h-4 w-4 mr-2" />
+                            Claim {rewardAmount} tCRO
+                          </>
+                        )}
+                      </Button>
+                    )}
+                    {hasClaimedReward && (
+                      <Badge className="mt-2 w-full bg-green-600 justify-center">Reward Claimed ✓</Badge>
+                    )}
+                    {score < 100 && !hasClaimedReward && (
+                      <p className="text-xs text-yellow-400 mt-2 text-center">
+                        Score at least 100 points to earn rewards (Current: {score} points)
+                      </p>
+                    )}
+                    {rewardError && (
+                      <p className="text-xs text-red-400 mt-2 text-center">{rewardError}</p>
+                    )}
+                  </div>
+                )}
+                
+                {score < 100 && (
+                  <div className="mb-4 p-3 bg-blue-900/30 rounded-lg border border-blue-500/50 max-w-md">
+                    <p className="text-sm text-blue-300 text-center">
+                      Score at least 100 points to earn rewards! 🎮
+                    </p>
+                  </div>
+                )}
               </>
             ) : (
               <h2 className="text-3xl font-bold text-white mb-2 text-center">Snake Game</h2>

@@ -50,11 +50,11 @@ export class RewardService {
     gameMode: string
   ): Promise<{ success: boolean; txHash?: string; error?: string; rewardAmount: string }> {
     try {
-      // Only reward for normal mode (3 lives)
-      if (gameMode !== "classic" || score < this.REWARD_RATE) {
+      // Check minimum score requirement (100 points = 1 tCRO)
+      if (score < this.REWARD_RATE) {
         return {
           success: false,
-          error: "Rewards only available for normal mode with score >= 100",
+          error: "Minimum score of 100 required for rewards",
           rewardAmount: "0",
         };
       }

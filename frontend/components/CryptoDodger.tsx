@@ -5,7 +5,7 @@ import { getSigner, publicClient } from '@/lib/viem'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { v4 as uuidv4 } from 'uuid'
-import { ArrowLeft, ArrowRight, RotateCcw, Play, Pause, Wallet } from 'lucide-react'
+import { ArrowLeft, ArrowRight, RotateCcw, Play, Pause, Wallet, Coins, Loader2 } from 'lucide-react'
 import { loadKey } from '@/lib/keyCache'
 
 type ObjectType = 'coin' | 'bomb' | 'freeze'
@@ -46,7 +46,11 @@ const CryptoDodger = () => {
   })
 
   const [playerX, setPlayerX] = useState(150)
-  const [userAddress, setUserAddress] = useState<string | null>(null)
+  const [userAddress, setUserAddress] = useState<`0x${string}` | null>(null)
+  const [rewardAmount, setRewardAmount] = useState<number | null>(null)
+  const [isClaiming, setIsClaiming] = useState(false)
+  const [hasClaimedReward, setHasClaimedReward] = useState(false)
+  const [rewardError, setRewardError] = useState<string | null>(null)
   const gameAreaRef = useRef<HTMLDivElement>(null)
   const gameIdRef = useRef<string>('')
   const playerSize = 40
@@ -54,6 +58,8 @@ const CryptoDodger = () => {
   const [gameHeight, setGameHeight] = useState(500)
   const moveStep = 20
   const playerSpeed = 8
+  
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"
 
   const animationRef = useRef<number>()
   const lastObjectTimeRef = useRef<number>(0)
@@ -70,14 +76,29 @@ const CryptoDodger = () => {
     }
   }, [])
 
-  // Check wallet connection
+  // Check wallet connection and calculate reward
   useEffect(() => {
-    const cachedKey = loadKey();
-    if (cachedKey) {
-      // User is connected
-      setUserAddress('connected');
-    }
-  }, [])
+    const initializeUser = async () => {
+      try {
+        const cachedKey = loadKey();
+        if (cachedKey) {
+          const signer = getSigner();
+          if (signer?.account?.address) {
+            setUserAddress(signer.account.address);
+          }
+        }
+      } catch (error) {
+        // User not connected
+      }
+    };
+    initializeUser();
+  }, []);
+
+  // Calculate reward amount: 100 points = 1 tCRO
+  useEffect(() => {
+    const tCROAmount = Math.floor(gameState.score / 100);
+    setRewardAmount(tCROAmount);
+  }, [gameState.score])
 
   const spawnObject = useCallback(() => {
     if (!gameState.isPlaying || gameState.isPaused) return
@@ -224,8 +245,64 @@ const CryptoDodger = () => {
     })
     setPlayerX(gameWidth / 2 - playerSize / 2)
     lastObjectTimeRef.current = Date.now()
+    setHasClaimedReward(false)
+    setRewardError(null)
     gameLoop()
   }, [gameWidth, gameLoop])
+
+  // Claim reward from backend
+  const claimReward = async () => {
+    try {
+      setIsClaiming(true);
+      setRewardError(null);
+
+      if (!userAddress) {
+        throw new Error('Please connect your wallet first');
+      }
+
+      if (gameState.score < 100) {
+        throw new Error('Minimum score of 100 required for rewards');
+      }
+
+      // Submit score to backend first
+      await fetch(`${API_URL}/api/score`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          address: userAddress,
+          score: gameState.score,
+          isPremium: false,
+          gameMode: 'crypto'
+        })
+      });
+
+      // Claim reward from backend
+      const response = await fetch(`${API_URL}/api/claim-reward`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          address: userAddress,
+          score: gameState.score,
+          gameMode: 'crypto'
+        })
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        setRewardError(null);
+        setHasClaimedReward(true);
+        alert(`🎉 Reward claimed! ${result.rewardAmountFormatted} tCRO sent to your wallet.\nTransaction: ${result.txHash}\nView on explorer: https://testnet.cronoscan.com/tx/${result.txHash}`);
+      } else {
+        throw new Error(result.error || 'Failed to claim reward');
+      }
+    } catch (error) {
+      console.error('Error claiming reward:', error);
+      setRewardError(error instanceof Error ? error.message : 'Failed to claim reward');
+    } finally {
+      setIsClaiming(false);
+    }
+  }
 
   const resetGame = useCallback(() => {
     setGameState({
@@ -347,11 +424,65 @@ const CryptoDodger = () => {
     if (!gameState.hasStarted || gameState.isPlaying) return null
 
     return (
-      <div className="absolute inset-0 bg-black bg-opacity-70 flex flex-col items-center justify-center z-10">
+      <div className="absolute inset-0 bg-black bg-opacity-70 flex flex-col items-center justify-center z-10 overflow-y-auto p-4">
         <h2 className="text-3xl font-bold text-white mb-4">
           {gameState.lives <= 0 ? 'Game Over!' : 'Crypto Dodger'}
         </h2>
-        <p className="text-xl text-white mb-6">Score: {gameState.score}</p>
+        <p className="text-xl text-white mb-4">Score: {gameState.score}</p>
+        
+        {/* Reward Information */}
+        {gameState.lives <= 0 && gameState.score >= 100 && (
+          <div className="mb-4 p-4 bg-purple-900/30 rounded-lg border border-purple-500/50 max-w-md">
+            <div className="flex items-center justify-center gap-2 mb-2">
+              <Coins className="h-5 w-5 text-yellow-400" />
+              <p className="font-semibold text-white">
+                {rewardAmount && rewardAmount > 0 
+                  ? `Reward Available: ${rewardAmount} tCRO`
+                  : 'No reward yet'}
+              </p>
+            </div>
+            <p className="text-xs text-gray-400 mb-3 text-center">(100 points = 1 tCRO)</p>
+            {rewardAmount && rewardAmount > 0 && !hasClaimedReward && (
+              <Button
+                onClick={claimReward}
+                disabled={isClaiming || !userAddress || gameState.score < 100}
+                className="w-full mt-2 bg-gradient-to-r from-yellow-500 to-orange-600 hover:opacity-90"
+              >
+                {isClaiming ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Claiming...
+                  </>
+                ) : (
+                  <>
+                    <Wallet className="h-4 w-4 mr-2" />
+                    Claim {rewardAmount} tCRO
+                  </>
+                )}
+              </Button>
+            )}
+            {hasClaimedReward && (
+              <Badge className="mt-2 w-full bg-green-600 justify-center">Reward Claimed ✓</Badge>
+            )}
+            {gameState.score < 100 && !hasClaimedReward && (
+              <p className="text-xs text-yellow-400 mt-2 text-center">
+                Score at least 100 points to earn rewards (Current: {gameState.score} points)
+              </p>
+            )}
+            {rewardError && (
+              <p className="text-xs text-red-400 mt-2 text-center">{rewardError}</p>
+            )}
+          </div>
+        )}
+        
+        {gameState.lives <= 0 && gameState.score < 100 && (
+          <div className="mb-4 p-3 bg-blue-900/30 rounded-lg border border-blue-500/50 max-w-md">
+            <p className="text-sm text-blue-300 text-center">
+              Score at least 100 points to earn rewards! 🎮
+            </p>
+          </div>
+        )}
+        
         <Button
           onClick={gameState.lives <= 0 ? resetGame : startGame}
           className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-6 rounded-full"
@@ -360,7 +491,7 @@ const CryptoDodger = () => {
         </Button>
       </div>
     )
-  }, [gameState.hasStarted, gameState.isPlaying, gameState.score, gameState.lives, resetGame, startGame])
+  }, [gameState.hasStarted, gameState.isPlaying, gameState.score, gameState.lives, rewardAmount, hasClaimedReward, isClaiming, userAddress, rewardError, resetGame, startGame, claimReward])
 
   // Instructions
   const instructions = useMemo(() => (
@@ -507,15 +638,15 @@ const CryptoDodger = () => {
 
       {instructions}
 
-      {/* Payment Status - Free to play */}
+      {/* Payment Status - Rewards Available */}
       {userAddress && (
         <div className="mt-6 bg-gray-800/30 backdrop-blur-sm rounded-xl p-4 max-w-md mx-auto">
           <div className="flex items-center justify-center gap-2 mb-2">
             <Wallet className="h-4 w-4 text-green-400" />
-            <h3 className="text-sm font-semibold text-white">Payment Status</h3>
+            <h3 className="text-sm font-semibold text-white">Rewards Available</h3>
           </div>
-          <Badge className="bg-green-600 text-white">🆓 Free to Play - No payment required</Badge>
-          <p className="text-xs text-gray-400 mt-2 text-center">This game is free and doesn't offer rewards</p>
+          <Badge className="bg-purple-600 text-white">💰 Earn tCRO rewards! 100 points = 1 tCRO</Badge>
+          <p className="text-xs text-gray-400 mt-2 text-center">Score 100+ points to earn rewards</p>
         </div>
       )}
     </div>
