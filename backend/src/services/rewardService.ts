@@ -61,12 +61,22 @@ export class RewardService {
 
       const rewardAmount = this.calculateReward(score);
       
-      // Check if already rewarded for this game session
-      const rewardKey = `${playerAddress.toLowerCase()}_${Date.now()}`;
-      if (this.rewards.has(rewardKey)) {
+      // Check if already rewarded for this exact score (prevent duplicate claims)
+      // We use address + score + gameMode as key to allow different games but prevent duplicate claims for same score
+      const rewardKey = `${playerAddress.toLowerCase()}_${score}_${gameMode}`;
+      
+      // Check recent rewards for same address and score to prevent duplicate claims
+      const recentRewards = Array.from(this.rewards.values()).filter(
+        (r) => r.address === playerAddress.toLowerCase() && 
+               r.score === score && 
+               r.gameMode === gameMode &&
+               (Date.now() - r.timestamp) < 5 * 60 * 1000 // Within last 5 minutes
+      );
+      
+      if (recentRewards.length > 0) {
         return {
           success: false,
-          error: "Reward already claimed for this game",
+          error: "Reward already claimed for this game session",
           rewardAmount,
         };
       }
@@ -105,7 +115,9 @@ export class RewardService {
         gameMode,
       };
       
-      this.rewards.set(rewardKey, record);
+      // Use timestamp-based key for storage to allow multiple games
+      const storageKey = `${playerAddress.toLowerCase()}_${Date.now()}_${score}`;
+      this.rewards.set(storageKey, record);
 
       return {
         success: true,

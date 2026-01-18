@@ -325,9 +325,9 @@ export default function CronosGamingDApp() {
         throw new Error('Please connect your wallet first');
       }
 
-      // Only allow rewards for normal mode (classic with 3 lives)
-      if (gameState.gameMode !== "classic" || gameState.lives !== 3) {
-        throw new Error('Rewards only available for normal mode (3 lives)');
+      // Only allow rewards for normal mode (classic with 3 initial lives)
+      if (initialGameMode !== "classic" || initialLives !== 3) {
+        throw new Error('Rewards only available for normal mode (classic with 3 lives)');
       }
 
       // Check minimum score (100 points = 1 tCRO)
@@ -343,18 +343,18 @@ export default function CronosGamingDApp() {
           address: userAddress,
           score: gameState.score,
           isPremium: isPremium,
-          gameMode: gameState.gameMode
+          gameMode: initialGameMode || gameState.gameMode // Use initialGameMode if available
         })
       })
 
-      // Claim reward from backend
+      // Claim reward from backend - use initialGameMode to ensure correct mode
       const response = await fetch(`${API_URL}/api/claim-reward`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           address: userAddress,
           score: gameState.score,
-          gameMode: gameState.gameMode
+          gameMode: initialGameMode || gameState.gameMode // Use initialGameMode if available
         })
       })
 
@@ -643,8 +643,13 @@ export default function CronosGamingDApp() {
       gameMode: "classic",
       level: 1,
       hasStarted: false,
+      hasClaimedReward: false,
     })
+    setRewardAmount(null)
+    setInitialGameMode(null)
+    setInitialLives(3)
     setCurrentView("menu")
+    setPaymentError(null)
   }, [cleanupIntervals])
 
   // Game loop effect
@@ -890,8 +895,7 @@ export default function CronosGamingDApp() {
                 <p className="mb-4">Final Score: {gameState.score}</p>
                 
                 {/* Reward Information - Only for normal mode (classic with 3 initial lives) */}
-                {/* Debug: initialGameMode={initialGameMode}, initialLives={initialLives}, gameMode={gameState.gameMode} */}
-                {initialGameMode === "classic" && (
+                {initialGameMode === "classic" && initialLives === 3 && (
                   <div className="mb-4 p-4 bg-purple-900/30 rounded-lg border border-purple-500/50">
                     <div className="flex items-center justify-center gap-2 mb-2">
                       <Coins className="h-5 w-5 text-yellow-400" />
@@ -900,8 +904,8 @@ export default function CronosGamingDApp() {
                           ? `Reward Available: ${rewardAmount} tCRO`
                           : 'No reward yet'}
                       </p>
-                      <p className="text-xs text-gray-400">(100 points = 1 tCRO)</p>
                     </div>
+                    <p className="text-xs text-gray-400 mb-3">(100 points = 1 tCRO)</p>
                     {rewardAmount && rewardAmount > 0 && !gameState.hasClaimedReward && (
                       <Button
                         onClick={claimReward}
@@ -933,21 +937,14 @@ export default function CronosGamingDApp() {
                 )}
                 
                 {/* Info for other modes - only show if NOT classic with 3 lives */}
-                {initialGameMode && initialGameMode !== "classic" && (
+                {(initialGameMode !== "classic" || (initialGameMode === "classic" && initialLives !== 3)) && (
                   <div className="mb-4 p-4 bg-blue-900/30 rounded-lg border border-blue-500/50">
                     <p className="text-sm text-blue-300">
                       {initialGameMode === "survival" || initialGameMode === "timeAttack" 
                         ? "🎮 Free play mode - No rewards available"
+                        : initialGameMode === "classic" && initialLives !== 3
+                        ? "⚠️ Rewards only available in normal mode (3 lives)"
                         : "No rewards available"}
-                    </p>
-                  </div>
-                )}
-                
-                {/* Show message if classic mode but not 3 lives (shouldn't happen, but just in case) */}
-                {initialGameMode === "classic" && initialLives !== 3 && (
-                  <div className="mb-4 p-4 bg-yellow-900/30 rounded-lg border border-yellow-500/50">
-                    <p className="text-sm text-yellow-300">
-                      ⚠️ Rewards only available in normal mode (3 lives). Current mode has {initialLives} lives.
                     </p>
                   </div>
                 )}
@@ -961,7 +958,14 @@ export default function CronosGamingDApp() {
                 
                 <div className="flex justify-center space-x-4">
                   <Button 
-                    onClick={() => startGame(gameState.gameMode)} 
+                    onClick={async () => {
+                      // Reset reward-related state before starting new game
+                      setGameState(prev => ({ ...prev, hasClaimedReward: false }))
+                      setRewardAmount(null)
+                      // Use initialGameMode if available, otherwise fallback to current gameMode
+                      const modeToRestart = initialGameMode || gameState.gameMode
+                      await startGame(modeToRestart)
+                    }} 
                     variant="secondary"
                     disabled={isCheckingPayment}
                     className="bg-gradient-to-r from-blue-500 to-purple-600 hover:opacity-90"
