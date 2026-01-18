@@ -25,11 +25,32 @@ export class AIChatService {
 
   /**
    * Get AI response for gaming chat
+   * Implements Cronos (rule-based) -> GROQ AI -> Fallback pattern
    */
   async getChatResponse(message: string, conversationHistory: ChatMessage[] = []): Promise<string> {
-    // If GROQ is not available, use fallback responses
+    // First, try GROQ AI if available
+    if (this.groqClient) {
+      try {
+        const groqResponse = await this.getGROQResponse(message, conversationHistory);
+        if (groqResponse && groqResponse.trim()) {
+          return groqResponse;
+        }
+      } catch (error) {
+        console.error("GROQ AI error, falling back to Cronos AI:", error);
+        // Fall through to Cronos AI fallback
+      }
+    }
+
+    // Fallback to Cronos AI (rule-based pattern matching)
+    return this.getFallbackResponse(message);
+  }
+
+  /**
+   * Get response from GROQ AI
+   */
+  private async getGROQResponse(message: string, conversationHistory: ChatMessage[] = []): Promise<string> {
     if (!this.groqClient) {
-      return this.getFallbackResponse(message);
+      throw new Error("GROQ client not initialized");
     }
 
     try {
@@ -64,9 +85,11 @@ Keep responses concise, friendly, and focused on gaming help. Use emojis sparing
         },
       ];
 
+      // Use a current GROQ model (llama-3.1-70b-versatile was deprecated)
+      // Available models: llama-3.3-70b-versatile, llama-3.1-8b-instant, llama-3.1-70b-versatile (deprecated)
       const completion = await this.groqClient.chat.completions.create({
         messages: messages as any,
-        model: process.env.GROQ_MODEL || "llama-3.1-70b-versatile",
+        model: process.env.GROQ_MODEL || "llama-3.3-70b-versatile",
         temperature: 0.7,
         max_tokens: 500,
       });
@@ -74,18 +97,19 @@ Keep responses concise, friendly, and focused on gaming help. Use emojis sparing
       const responseText = completion.choices[0]?.message?.content || "";
       
       if (!responseText.trim()) {
-        return this.getFallbackResponse(message);
+        // Empty response - throw to trigger fallback
+        throw new Error("Empty response from GROQ AI");
       }
 
       return responseText.trim();
     } catch (error) {
       console.error("GROQ AI Chat error:", error);
-      return this.getFallbackResponse(message);
+      throw error; // Re-throw to let caller handle fallback to Cronos AI
     }
   }
 
   /**
-   * Fallback response when AI is not available
+   * Fallback response when AI is not available (Cronos-style pattern matching)
    */
   private getFallbackResponse(message: string): string {
     const lowerMessage = message.toLowerCase();

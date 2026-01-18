@@ -1,11 +1,26 @@
 {
-  "name": "x402",
+  "name": "gasless-gaming-paywall",
   "version": "1.0.0",
-  "private": true,
+  "description": "Gasless Gaming Paywall - Full Stack Application",
   "scripts": {
-    "dev": "npm run dev --prefix frontend",
-    "build": "npm run build --prefix frontend",
-    "start": "npm run start --prefix frontend",
-    "lint": "npm run lint --prefix frontend"
-  }
+    "dev": "concurrently \"npm:dev:*\"",
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:agent": "cd agent && npm run dev",
+    "start": "concurrently \"npm:start:*\"",
+    "start:frontend": "cd frontend && npm run build && npm start",
+    "start:backend": "cd backend && npm start",
+    "start:agent": "cd agent && npm run build && npm start",
+    "build": "npm run build:frontend && npm run build:backend && npm run build:agent",
+    "build:frontend": "cd frontend && npm run build",
+    "build:backend": "cd backend && npm run build",
+    "build:agent": "cd agent && npm run build",
+    "install:all": "npm install && cd frontend && npm install && cd ../backend && npm install && cd ../agent && npm install"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "keywords": ["gasless", "gaming", "blockchain", "cronos"],
+  "author": "",
+  "license": "ISC"
 }

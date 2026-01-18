@@ -30,7 +30,7 @@ export default function RootLayout({
       <body className={`${inter.className} min-h-screen bg-gray-900 text-white overflow-auto`}>
         <Providers>
           <MainNavbar />
-          <main className="pt-16 min-h-[calc(100vh-4rem)] overflow-auto">
+          <main className="pt-16 pb-16 md:pb-0 min-h-[calc(100vh-4rem)] overflow-auto">
             {children}
           </main>
         </Providers>
