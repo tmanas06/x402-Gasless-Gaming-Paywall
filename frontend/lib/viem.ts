@@ -188,7 +188,7 @@ export const cronosTestnet = defineChain({
   name: "Cronos Testnet",
   nativeCurrency: { 
     name: "Cronos", 
-    symbol: "CRO", 
+    symbol: "tCRO", 
     decimals: 18 
   },
   rpcUrls: { 

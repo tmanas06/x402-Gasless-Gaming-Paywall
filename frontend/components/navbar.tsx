@@ -140,7 +140,7 @@ export default function WalletConnector() {
           {/* balance */}
           {balance && (
             <span className="px-2 py-1 bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-300 rounded-lg text-xs sm:text-sm font-medium">
-              {Number(balance).toFixed(4)} CRO
+              {Number(balance).toFixed(4)} tCRO
             </span>
           )}
 

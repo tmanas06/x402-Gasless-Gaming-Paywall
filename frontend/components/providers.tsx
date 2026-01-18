@@ -1,7 +1,7 @@
 'use client';
 
 import {PrivyProvider} from '@privy-io/react-auth';
-import { cronosTestnet } from 'viem/chains';
+import { cronosTestnet } from '@/lib/viem';
 
 export default function Providers({children}: {children: React.ReactNode}) {
     const appId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
