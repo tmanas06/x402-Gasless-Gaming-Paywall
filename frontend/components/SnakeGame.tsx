@@ -615,34 +615,56 @@ export default function SnakeGame() {
         />
         
         {!isPlaying && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black bg-opacity-80 p-4 overflow-y-auto">
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-b from-black/95 via-black/90 to-black/95 backdrop-blur-sm p-4 overflow-y-auto">
             {gameOver ? (
-              <>
-                <h2 className="text-3xl font-bold text-red-500 mb-4 text-center">Game Over!</h2>
-                <p className="text-white text-xl mb-4">Your score: <span className="text-yellow-400">{score}</span></p>
+              <div className="w-full max-w-md animate-in fade-in zoom-in-95 duration-300">
+                {/* Game Over Header */}
+                <div className="text-center mb-6">
+                  <div className="inline-block mb-3 p-3 bg-gradient-to-br from-red-600/20 to-red-700/10 rounded-full border border-red-500/30">
+                    <span className="text-3xl">☠️</span>
+                  </div>
+                  <h2 className="text-4xl font-bold bg-gradient-to-r from-red-500 via-red-600 to-orange-500 bg-clip-text text-transparent mb-2">
+                    Game Over!
+                  </h2>
+                  <div className="h-1 w-16 bg-gradient-to-r from-red-500 to-orange-500 mx-auto rounded-full"></div>
+                </div>
+
+                {/* Score Display */}
+                <div className="mb-6 p-5 bg-gradient-to-br from-blue-900/40 to-purple-900/40 rounded-xl border border-blue-500/20 shadow-lg">
+                  <div className="text-center">
+                    <p className="text-sm text-gray-400 mb-2 uppercase tracking-widest">Final Score</p>
+                    <p className="text-5xl font-black bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">
+                      {score}
+                    </p>
+                  </div>
+                </div>
                 
-                {/* Reward Information */}
+                {/* Reward Section */}
                 {score >= 100 && (
-                  <div className="mb-4 p-4 bg-purple-900/30 rounded-lg border border-purple-500/50 max-w-md">
-                    <div className="flex items-center justify-center gap-2 mb-2">
-                      <Coins className="h-5 w-5 text-yellow-400" />
-                      <p className="font-semibold text-white">
-                        {rewardAmount && rewardAmount > 0 
-                          ? `Reward Available: ${rewardAmount} tCRO`
-                          : 'No reward yet'}
-                      </p>
+                  <div className="mb-6 p-4 bg-gradient-to-br from-amber-900/40 via-yellow-900/30 to-orange-900/40 rounded-xl border border-yellow-500/30 shadow-lg">
+                    <div className="flex items-center justify-center gap-3 mb-3">
+                      <div className="p-2 bg-yellow-500/20 rounded-lg">
+                        <Coins className="h-6 w-6 text-yellow-400" />
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-400 uppercase tracking-widest">Reward Earned</p>
+                        <p className="text-2xl font-bold text-yellow-300">
+                          {rewardAmount ? `${rewardAmount} tCRO` : 'Calculating...'}
+                        </p>
+                      </div>
                     </div>
-                    <p className="text-xs text-gray-400 mb-3 text-center">(100 points = 1 tCRO)</p>
+                    <p className="text-xs text-gray-400 mb-4 text-center">(100 points = 1 tCRO)</p>
+                    
                     {rewardAmount && rewardAmount > 0 && !hasClaimedReward && (
                       <Button
                         onClick={claimReward}
                         disabled={isClaiming || !userAddress || score < 100}
-                        className="w-full mt-2 bg-gradient-to-r from-yellow-500 to-orange-600 hover:opacity-90"
+                        className="w-full mt-4 bg-gradient-to-r from-yellow-500 via-amber-500 to-orange-600 hover:from-yellow-600 hover:via-amber-600 hover:to-orange-700 text-black font-bold shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-60"
                       >
                         {isClaiming ? (
                           <>
                             <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                            Claiming...
+                            Processing...
                           </>
                         ) : (
                           <>
@@ -652,40 +674,56 @@ export default function SnakeGame() {
                         )}
                       </Button>
                     )}
+                    
                     {hasClaimedReward && (
-                      <Badge className="mt-2 w-full bg-green-600 justify-center">Reward Claimed ✓</Badge>
+                      <div className="w-full mt-4 p-3 bg-green-500/20 border border-green-500/50 rounded-lg flex items-center justify-center gap-2">
+                        <span className="text-2xl">✓</span>
+                        <span className="font-semibold text-green-300">Reward Claimed!</span>
+                      </div>
                     )}
-                    {score < 100 && !hasClaimedReward && (
-                      <p className="text-xs text-yellow-400 mt-2 text-center">
-                        Score at least 100 points to earn rewards (Current: {score} points)
-                      </p>
-                    )}
+                    
                     {rewardError && (
-                      <p className="text-xs text-red-400 mt-2 text-center">{rewardError}</p>
+                      <div className="w-full mt-3 p-3 bg-red-500/20 border border-red-500/50 rounded-lg">
+                        <p className="text-xs text-red-300 text-center">{rewardError}</p>
+                      </div>
                     )}
                   </div>
                 )}
                 
                 {score < 100 && (
-                  <div className="mb-4 p-3 bg-blue-900/30 rounded-lg border border-blue-500/50 max-w-md">
-                    <p className="text-sm text-blue-300 text-center">
-                      Score at least 100 points to earn rewards! 🎮
+                  <div className="mb-6 p-4 bg-gradient-to-br from-blue-900/40 to-cyan-900/40 rounded-xl border border-cyan-500/20">
+                    <div className="flex items-center justify-center gap-2 mb-2">
+                      <span className="text-xl">🎯</span>
+                      <p className="text-sm font-semibold text-cyan-300">
+                        Score 100+ to earn rewards!
+                      </p>
+                    </div>
+                    <div className="w-full bg-gray-700 rounded-full h-2 overflow-hidden">
+                      <div 
+                        className="bg-gradient-to-r from-cyan-400 to-blue-500 h-full transition-all duration-500"
+                        style={{ width: `${Math.min((score / 100) * 100, 100)}%` }}
+                      ></div>
+                    </div>
+                    <p className="text-xs text-gray-400 mt-2 text-center">
+                      {100 - score} more points needed
                     </p>
                   </div>
                 )}
-              </>
+              </div>
             ) : (
-              <h2 className="text-3xl font-bold text-white mb-2 text-center">Snake Game</h2>
+              <h2 className="text-4xl font-bold text-white mb-2 text-center">Snake Game</h2>
             )}
-            <p className="text-gray-300 text-center mb-6 max-w-md">
+            
+            <p className="text-gray-300 text-center mb-8 max-w-md text-sm">
               {showMobileControls 
                 ? 'Swipe or use the on-screen controls to move the snake.'
                 : 'Use arrow keys or WASD to move the snake.'
               }
             </p>
+            
             <Button 
               onClick={startGame}
-              className="px-8 py-4 text-lg flex items-center gap-2 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-lg"
+              className="px-8 py-4 text-lg font-bold flex items-center gap-2 bg-gradient-to-r from-green-400 via-emerald-500 to-teal-600 hover:from-green-500 hover:via-emerald-600 hover:to-teal-700 text-white shadow-lg hover:shadow-2xl transition-all duration-200 transform hover:scale-105"
               size="lg"
             >
               {gameOver ? <RotateCcw className="w-5 h-5" /> : <Play className="w-5 h-5" />}

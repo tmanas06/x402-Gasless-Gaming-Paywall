@@ -4,9 +4,10 @@ import { useState, useEffect } from "react";
 import CronosGamingDApp from "@/components/game";
 import SnakeGame from "@/components/SnakeGame";
 import CryptoDodger from "@/components/CryptoDodger";
-import { Gamepad2, MoveRight, Shield, Sparkles, Trophy, Zap, Star, Bot, X, ChevronRight } from "lucide-react";
+import GuessTheMarket from "@/components/GuessTheMarket";
+import { Gamepad2, MoveRight, Shield, Sparkles, Trophy, Zap, Star, Bot, X, ChevronRight, TrendingUp } from "lucide-react";
 
-type GameType = 'bubble' | 'snake' | 'crypto';
+type GameType = 'bubble' | 'snake' | 'crypto' | 'market';
 
 export default function GamePage() {
   const [activeGame, setActiveGame] = useState<GameType>('bubble');
@@ -19,7 +20,8 @@ export default function GamePage() {
     const tips = {
       bubble: "💡 AI Assistant: Pop bubbles rapidly to build combo multipliers! Quick taps = more points! Avoid red bombs - they're game enders!",
       snake: "🤖 AI Assistant: Strategic thinking wins! Trap food near walls for longer snake growth. Patience over speed - plan your route!",
-      crypto: "⚡ AI Assistant: Coin collection is priority #1! Use freeze power-ups strategically when overwhelmed. Pattern recognition is key!"
+      crypto: "⚡ AI Assistant: Coin collection is priority #1! Use freeze power-ups strategically when overwhelmed. Pattern recognition is key!",
+      market: "📈 AI Assistant: Predict crypto movements in 10 seconds! Analyze trends and make smart guesses. +10 for correct, -10 for wrong predictions!"
     };
 
     setShowAIMessage(true);
@@ -172,11 +174,25 @@ export default function GamePage() {
               <span className="relative z-10 text-lg">Crypto Dodger</span>
               {activeGame === 'crypto' && <Trophy className="w-5 h-5 ml-3 text-yellow-300 relative z-10 animate-pulse" />}
             </button>
+
+            <button
+              onClick={() => setActiveGame('market')}
+              className={`relative flex items-center px-8 py-4 rounded-2xl transition-all duration-300 transform font-bold ${
+                activeGame === 'market'
+                  ? 'bg-gradient-to-r from-cyan-600 via-blue-600 to-cyan-600 text-white shadow-2xl scale-110 ring-4 ring-cyan-400/50 shadow-cyan-500/50'
+                  : 'text-gray-300 hover:text-white hover:bg-gray-800/60 hover:scale-105 border border-gray-700/50'
+              }`}
+            >
+              {activeGame === 'market' && <div className="absolute inset-0 bg-gradient-to-r from-cyan-600 to-blue-600 opacity-50 blur-lg"></div>}
+              <TrendingUp className={`w-6 h-6 mr-3 relative z-10 ${activeGame === 'market' ? 'animate-pulse' : ''}`} />
+              <span className="relative z-10 text-lg">Guess Market</span>
+              {activeGame === 'market' && <Trophy className="w-5 h-5 ml-3 text-yellow-300 relative z-10 animate-pulse" />}
+            </button>
           </div>
         </div>
 
         {/* Game Container with Enhanced Styling */}
-        <div className="bg-gradient-to-br from-gray-900/95 to-black/95 backdrop-blur-md rounded-3xl overflow-hidden shadow-2xl border-2 border-purple-500/30 relative">
+        <div className="bg-gradient-to-br from-gray-900/95 to-black/95 backdrop-blur-md rounded-3xl overflow-hidden shadow-2xl border-2 border-purple-500/30 relative mt-8">
           {/* Enhanced glowing border effect */}
           <div className="absolute inset-0 bg-gradient-to-r from-purple-600/30 via-blue-600/30 via-pink-600/30 to-purple-600/30 rounded-3xl blur-2xl opacity-60 -z-10 animate-pulse"></div>
           <div className="absolute -inset-1 bg-gradient-to-r from-purple-500 via-blue-500 to-pink-500 rounded-3xl opacity-20 blur-xl -z-20"></div>
@@ -184,6 +200,7 @@ export default function GamePage() {
           {activeGame === 'bubble' && <CronosGamingDApp />}
           {activeGame === 'snake' && <SnakeGame />}
           {activeGame === 'crypto' && <CryptoDodger />}
+          {activeGame === 'market' && <GuessTheMarket />}
         </div>
 
         {/* Enhanced Footer Info with AI badge */}
@@ -197,10 +214,14 @@ export default function GamePage() {
                     ? '🎯 Click bubbles to pop them and score points!'
                     : activeGame === 'snake'
                     ? '🐍 Use arrow keys or WASD to control the snake!'
-                    : '🚀 Dodge bombs and collect coins to score!'}
+                    : activeGame === 'crypto'
+                    ? '🚀 Dodge bombs and collect coins to score!'
+                    : '📈 Predict crypto price movements and earn points!'}
                 </p>
                 <p className="text-gray-300 text-sm">
-                  💰 <span className="font-semibold text-yellow-300">Earn tCRO rewards:</span> 100 points = 1 tCRO | All games support rewards!
+                  {activeGame === 'market'
+                    ? '💵 <span className="font-semibold text-cyan-300">Correct guess:</span> +10 points | Wrong: -10 points'
+                    : '💰 <span className="font-semibold text-yellow-300">Earn tCRO rewards:</span> 100 points = 1 tCRO | All games support rewards!'}
                 </p>
               </div>
             </div>

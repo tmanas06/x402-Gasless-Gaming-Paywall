@@ -1,10 +1,12 @@
 import express, { Request, Response } from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+import { v4 as uuidv4 } from "uuid";
 import { PaymentService } from "./services/paymentService";
 import { GameService } from "./services/gameService";
 import { RewardService } from "./services/rewardService";
 import { AIChatService } from "./services/aiChatService";
+import { MarketService } from "./services/marketService";
 
 dotenv.config();
 
@@ -18,6 +20,7 @@ app.use(express.json());
 // Services
 const paymentService = new PaymentService();
 const gameService = new GameService();
+const marketService = new MarketService();
 let rewardService: RewardService;
 let aiChatService: AIChatService;
 
@@ -208,6 +211,164 @@ app.post("/api/ai-chat", async (req: Request, res: Response) => {
     res.status(500).json({ 
       error: "Failed to get AI response",
       response: "I'm having trouble right now. Please try again later." 
+    });
+  }
+});
+
+// ============================================
+// MARKET GUESS GAME ENDPOINTS
+// ============================================
+
+// Get available cryptos
+app.get("/api/market/cryptos", async (req: Request, res: Response) => {
+  try {
+    const cryptos = await marketService.getAvailableCryptos();
+    res.json({
+      success: true,
+      cryptos,
+      timestamp: Date.now(),
+    });
+  } catch (error) {
+    console.error("Error fetching cryptos:", error);
+    res.status(500).json({
+      success: false,
+      error: "Failed to fetch cryptocurrency data",
+    });
+  }
+});
+
+// Get current price of a crypto
+app.get("/api/market/price/:crypto", async (req: Request, res: Response) => {
+  try {
+    const { crypto } = req.params;
+    const priceData = await marketService.getCurrentPrice(crypto);
+    res.json({
+      success: true,
+      ...priceData,
+    });
+  } catch (error) {
+    console.error("Error fetching price:", error);
+    res.status(400).json({
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to fetch price",
+    });
+  }
+});
+
+// Submit a market guess
+app.post("/api/market/guess", async (req: Request, res: Response) => {
+  try {
+    const { address, crypto, startPrice, guess, duration } = req.body;
+
+    if (!address || !crypto || startPrice === undefined || !guess) {
+      return res.status(400).json({
+        success: false,
+        error: "Missing required fields: address, crypto, startPrice, guess",
+      });
+    }
+
+    if (!["up", "down"].includes(guess.toLowerCase())) {
+      return res.status(400).json({
+        success: false,
+        error: "Guess must be 'up' or 'down'",
+      });
+    }
+
+    const guessId = uuidv4();
+    const guessDuration = duration || 10; // Default 10 seconds
+
+    // Submit guess and wait for result
+    const result = await marketService.submitGuess(
+      guessId,
+      address,
+      crypto.toLowerCase(),
+      startPrice,
+      guess.toLowerCase() as "up" | "down",
+      guessDuration
+    );
+
+    // For now, return guessId immediately; client polls for result
+    res.json({
+      success: true,
+      guessId,
+      message: `Evaluating guess for ${crypto} in ${guessDuration} seconds...`,
+      startPrice,
+      duration: guessDuration,
+    });
+
+    // Send result after waiting period
+    setTimeout(() => {
+      res.write(
+        JSON.stringify({
+          type: "guess_result",
+          ...result,
+        })
+      );
+    }, guessDuration * 1000);
+  } catch (error) {
+    console.error("Error submitting guess:", error);
+    res.status(500).json({
+      success: false,
+      error: "Failed to submit guess",
+    });
+  }
+});
+
+// Get guess result (polling endpoint)
+app.get("/api/market/guess/:guessId", async (req: Request, res: Response) => {
+  try {
+    const { guessId } = req.params;
+
+    // This is a placeholder - in production, implement proper result tracking
+    res.json({
+      success: true,
+      message: "Use SSE or WebSocket for real-time results",
+    });
+  } catch (error) {
+    console.error("Error fetching guess result:", error);
+    res.status(500).json({
+      success: false,
+      error: "Failed to fetch guess result",
+    });
+  }
+});
+
+// Get user market statistics
+app.get("/api/market/stats/:address", async (req: Request, res: Response) => {
+  try {
+    const { address } = req.params;
+    const stats = marketService.getUserStats(address);
+
+    res.json({
+      success: true,
+      address,
+      stats,
+    });
+  } catch (error) {
+    console.error("Error fetching stats:", error);
+    res.status(500).json({
+      success: false,
+      error: "Failed to fetch market statistics",
+    });
+  }
+});
+
+// Get market leaderboard
+app.get("/api/market/leaderboard", async (req: Request, res: Response) => {
+  try {
+    const limit = parseInt(req.query.limit as string) || 10;
+    const leaderboard = marketService.getLeaderboard(limit);
+
+    res.json({
+      success: true,
+      leaderboard,
+      timestamp: Date.now(),
+    });
+  } catch (error) {
+    console.error("Error fetching leaderboard:", error);
+    res.status(500).json({
+      success: false,
+      error: "Failed to fetch leaderboard",
     });
   }
 });
