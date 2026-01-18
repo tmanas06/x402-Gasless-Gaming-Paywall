@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Gamepad2, Trophy, Settings, User } from 'lucide-react';
+import { Home, Gamepad2, Trophy, Settings, User, Bot } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import WalletConnector from './navbar';
 
@@ -25,6 +25,11 @@ export default function MainNavbar() {
       name: 'Leaderboard',
       href: '/leaderboard',
       icon: Trophy,
+    },
+    {
+      name: 'AI Chat',
+      href: '/ai-chat',
+      icon: Bot,
     },
     {
       name: 'Profile',

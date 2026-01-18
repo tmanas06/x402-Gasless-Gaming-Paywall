@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 import { PaymentService } from "./services/paymentService";
 import { GameService } from "./services/gameService";
 import { RewardService } from "./services/rewardService";
+import { AIChatService } from "./services/aiChatService";
 
 dotenv.config();
 
@@ -18,12 +19,14 @@ app.use(express.json());
 const paymentService = new PaymentService();
 const gameService = new GameService();
 let rewardService: RewardService;
+let aiChatService: AIChatService;
 
 // Initialize services
 try {
   paymentService.initialize();
   gameService.initialize();
   rewardService = new RewardService();
+  aiChatService = new AIChatService();
 } catch (error) {
   console.error("Failed to initialize reward service:", error);
   console.error("Make sure REWARD_WALLET_PRIVATE_KEY is set in .env");
@@ -177,6 +180,35 @@ app.post("/api/claim-reward", async (req: Request, res: Response) => {
   } catch (error) {
     console.error("Claim reward error:", error);
     res.status(500).json({ error: "Failed to claim reward" });
+  }
+});
+
+// AI Chat endpoint
+app.post("/api/ai-chat", async (req: Request, res: Response) => {
+  try {
+    const { message, conversationHistory } = req.body;
+
+    if (!message || typeof message !== "string") {
+      return res.status(400).json({ error: "Message is required" });
+    }
+
+    if (!aiChatService) {
+      return res.status(500).json({ error: "AI chat service not initialized" });
+    }
+
+    const response = await aiChatService.getChatResponse(message, conversationHistory || []);
+    
+    res.json({
+      success: true,
+      response,
+      aiAvailable: aiChatService.isAvailable(),
+    });
+  } catch (error) {
+    console.error("AI chat error:", error);
+    res.status(500).json({ 
+      error: "Failed to get AI response",
+      response: "I'm having trouble right now. Please try again later." 
+    });
   }
 });
 
