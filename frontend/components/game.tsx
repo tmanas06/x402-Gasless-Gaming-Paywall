@@ -4,8 +4,9 @@ import { useState, useEffect, useCallback, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Clock, Target, Zap, Play, Pause, RotateCcw } from "lucide-react"
+import { Clock, Target, Zap, Play, Pause, RotateCcw, Coins, Wallet, Loader2 } from "lucide-react"
 import { getSigner, publicClient, CONTRACT_ADDRESS, CONTRACT_ABI, type ContractFunction } from "@/lib/viem"
+import { loadKey } from "@/lib/keyCache"
 import { Howl } from "howler"
 
 // Sound effects interface
@@ -69,52 +70,59 @@ export default function CronosGamingDApp() {
 
   const [rewardAmount, setRewardAmount] = useState<number | null>(null)
   const [isClaiming, setIsClaiming] = useState(false)
+  const [freePlaysRemaining, setFreePlaysRemaining] = useState<number | null>(null)
+  const [isPremium, setIsPremium] = useState(false)
+  const [isCheckingPayment, setIsCheckingPayment] = useState(false)
+  const [paymentError, setPaymentError] = useState<string | null>(null)
+  const [userAddress, setUserAddress] = useState<`0x${string}` | null>(null)
+  const [initialGameMode, setInitialGameMode] = useState<GameState["gameMode"] | null>(null)
+  const [initialLives, setInitialLives] = useState<number>(3)
+  const [showPaymentModal, setShowPaymentModal] = useState(false)
+  const [paymentInvoice, setPaymentInvoice] = useState<any>(null)
+  const [pendingGameMode, setPendingGameMode] = useState<GameState["gameMode"] | null>(null)
+  
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"
 
-  // Check if player has claimed reward (only when authenticated)
+  // Get user address and check claim status
   useEffect(() => {
-    const checkClaimStatus = async () => {
+    const initializeUser = async () => {
       try {
-        // Check if key exists before trying to get signer
-        const { loadKey } = await import('@/lib/keyCache');
         const cachedKey = loadKey();
-        
         if (!cachedKey) {
-          // User not authenticated yet, skip check
           return;
         }
         
         const signer = getSigner();
         if (signer?.account?.address) {
-          const hasClaimed = await publicClient.simulateContract({
-            address: CONTRACT_ADDRESS,
-            abi: CONTRACT_ABI,
-            functionName: 'hasClaimed',
-            args: [signer.account.address]
-          });
-          setGameState(prev => ({ ...prev, hasClaimedReward: hasClaimed }))
+          setUserAddress(signer.account.address);
+          
+          // Check if user has claimed reward from smart contract
+          try {
+            const hasClaimed = await publicClient.readContract({
+              address: CONTRACT_ADDRESS,
+              abi: CONTRACT_ABI,
+              functionName: 'hasClaimed',
+              args: [signer.account.address]
+            });
+            setGameState(prev => ({ ...prev, hasClaimedReward: hasClaimed as boolean }))
+          } catch (error) {
+            console.error('Error checking claim status:', error)
+          }
         }
       } catch (error) {
-        // Silently fail if user is not authenticated
-        // This is expected before login
         if (error instanceof Error && !error.message.includes('No cached private key')) {
-          console.error('Error checking claim status:', error)
+          console.error('Error initializing user:', error)
         }
       }
     }
-    checkClaimStatus()
+    initializeUser()
   }, [])
 
-  // Calculate dynamic reward amount based on score
+  // Calculate reward amount: 100 points = 1 tCRO
   const calculateRewardAmount = useCallback((score: number) => {
-    // Base reward amount (0.001 USDC)
-    const baseReward = 0.001;
-    // Reward increment per 40 points
-    const rewardPer40Points = 0.001;
-    // Calculate how many 40-point intervals we've reached
-    const scoreIntervals = Math.floor(score / 40);
-    // Calculate total reward
-    const totalReward = baseReward + (scoreIntervals * rewardPer40Points);
-    return totalReward;
+    // 100 points = 1 tCRO
+    const tCROAmount = Math.floor(score / 100);
+    return tCROAmount;
   }, []);
 
   // Update reward amount when score changes
@@ -123,43 +131,249 @@ export default function CronosGamingDApp() {
     setRewardAmount(rewardAmount);
   }, [gameState.score, calculateRewardAmount])
 
-  // Claim reward function
+  // Check payment status with backend
+  const checkPaymentStatus = useCallback(async (address: string): Promise<{ allowed: boolean; isPremium: boolean; freePlayRemaining?: number; requiresPayment?: boolean; invoice?: any }> => {
+    try {
+      setPaymentError(null)
+      
+      console.log(`[Payment Check] Checking payment for address: ${address}`)
+      console.log(`[Payment Check] API URL: ${API_URL}`)
+      
+      const response = await fetch(`${API_URL}/api/play?address=${encodeURIComponent(address)}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
+      
+      console.log(`[Payment Check] Response status: ${response.status}`)
+      
+      if (response.status === 402) {
+        // Payment required
+        const data = await response.json()
+        console.log('[Payment Check] Payment required:', data)
+        return {
+          allowed: false,
+          isPremium: false,
+          requiresPayment: true,
+          invoice: data.invoice
+        }
+      }
+      
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.error(`[Payment Check] Server error: ${response.status} - ${errorText}`)
+        throw new Error(`Server error: ${response.status} ${response.statusText}`)
+      }
+      
+      const data = await response.json()
+      console.log('[Payment Check] Payment status:', data)
+      return {
+        allowed: data.allowed,
+        isPremium: data.isPremium,
+        freePlayRemaining: data.freePlayRemaining
+      }
+    } catch (error) {
+      console.error('[Payment Check] Error:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Failed to check payment status'
+      setPaymentError(errorMessage)
+      // If backend is not available, allow free play for now
+      if (errorMessage.includes('fetch') || errorMessage.includes('Failed to fetch')) {
+        console.warn('[Payment Check] Backend not available, allowing free play')
+        return {
+          allowed: true,
+          isPremium: false,
+          freePlayRemaining: 3
+        }
+      }
+      throw error
+    }
+  }, [API_URL])
+
+  // cleanupIntervals - defined early so it can be used by other functions
+  const cleanupIntervals = useCallback(() => {
+    // Clear game loop interval if it exists
+    if (gameLoopRef.current !== null) {
+      clearInterval(gameLoopRef.current)
+      gameLoopRef.current = null
+    }
+    
+    // Clear bubble spawn interval if it exists
+    if (bubbleSpawnRef.current !== null) {
+      clearInterval(bubbleSpawnRef.current)
+      bubbleSpawnRef.current = null
+    }
+    
+    // Clear payment poll interval if it exists
+    if (paymentPollRef.current !== null) {
+      clearInterval(paymentPollRef.current)
+      paymentPollRef.current = null
+    }
+  }, [])
+
+  // Internal game start (after payment check) - defined before handlePayment to avoid circular dependency
+  const startGameInternal = useCallback((mode: GameState["gameMode"]) => {
+    // Clear any existing game loop
+    cleanupIntervals()
+    
+    // Generate new game ID if needed
+    if (!gameIdRef.current) {
+      gameIdRef.current = typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        ? crypto.randomUUID()
+        : Math.random().toString(36).slice(2) + Date.now()
+    }
+    
+    // Reset game state
+    // Classic mode = 3 lives (normal mode with rewards)
+    // Survival = 3 lives (free mode)
+    // Time Attack = unlimited lives (free mode)
+    const initialLivesCount = mode === "classic" ? 3 : mode === "survival" ? 3 : 999
+    setInitialGameMode(mode)
+    setInitialLives(initialLivesCount)
+    
+    setGameState({
+      bubbles: [],
+      score: 0,
+      lives: initialLivesCount,
+      timeLeft: mode === "timeAttack" ? GAME_DURATION : 999,
+      isPlaying: true,
+      isPaused: false,
+      gameMode: mode,
+      level: 1,
+      hasStarted: false,
+      hasClaimedReward: false
+    })
+    
+    // Set initial view and start time
+    setCurrentView("game")
+    startTimeRef.current = Date.now()
+    setPaymentError(null)
+  }, [cleanupIntervals])
+
+  // Handle x402 payment flow
+  const handlePayment = useCallback(async (invoice: any, mode: GameState["gameMode"]) => {
+    try {
+      // Clear any existing payment poll
+      if (paymentPollRef.current) {
+        clearInterval(paymentPollRef.current)
+        paymentPollRef.current = null
+      }
+      
+      console.log('[Payment] Showing payment modal with invoice:', invoice)
+      // Show payment modal
+      setPaymentInvoice(invoice)
+      setPendingGameMode(mode)
+      setShowPaymentModal(true)
+      setPaymentError(null)
+      
+      // Start polling for payment verification in the background
+      let attempts = 0
+      const maxAttempts = 60 // 2 minutes (60 * 2 seconds)
+      const pollInterval = 2000 // 2 seconds
+      
+      paymentPollRef.current = setInterval(async () => {
+        attempts++
+        try {
+          const status = await checkPaymentStatus(userAddress!)
+          if (status.allowed && status.isPremium) {
+            if (paymentPollRef.current) {
+              clearInterval(paymentPollRef.current)
+              paymentPollRef.current = null
+            }
+            setPaymentError(null)
+            setIsPremium(true)
+            setFreePlaysRemaining(null)
+            setShowPaymentModal(false)
+            setPaymentInvoice(null)
+            setPendingGameMode(null)
+            // Start the game after payment is verified
+            startGameInternal(mode)
+          } else if (attempts >= maxAttempts) {
+            if (paymentPollRef.current) {
+              clearInterval(paymentPollRef.current)
+              paymentPollRef.current = null
+            }
+            setPaymentError('Payment timeout. Please try again.')
+            setShowPaymentModal(false)
+          }
+        } catch (error) {
+          if (attempts >= maxAttempts) {
+            if (paymentPollRef.current) {
+              clearInterval(paymentPollRef.current)
+              paymentPollRef.current = null
+            }
+            setPaymentError('Payment verification failed. Please try again.')
+            setShowPaymentModal(false)
+          }
+        }
+      }, pollInterval)
+      
+    } catch (error) {
+      console.error('Error handling payment:', error)
+      setPaymentError(error instanceof Error ? error.message : 'Payment failed')
+      setShowPaymentModal(false)
+    }
+  }, [userAddress, checkPaymentStatus, startGameInternal])
+
+  // Claim reward from backend (sends tCRO directly)
   const claimReward = async () => {
     try {
       setIsClaiming(true)
+      setPaymentError(null)
       
-      // Check if user is authenticated
-      const { loadKey } = await import('@/lib/keyCache');
-      const cachedKey = loadKey();
-      
-      if (!cachedKey) {
+      if (!userAddress) {
         throw new Error('Please connect your wallet first');
       }
+
+      // Only allow rewards for normal mode (classic with 3 lives)
+      if (gameState.gameMode !== "classic" || gameState.lives !== 3) {
+        throw new Error('Rewards only available for normal mode (3 lives)');
+      }
+
+      // Check minimum score (100 points = 1 tCRO)
+      if (gameState.score < 100) {
+        throw new Error('Minimum score of 100 required for rewards');
+      }
+
+      // Submit score to backend first
+      await fetch(`${API_URL}/api/score`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          address: userAddress,
+          score: gameState.score,
+          isPremium: isPremium,
+          gameMode: gameState.gameMode
+        })
+      })
+
+      // Claim reward from backend
+      const response = await fetch(`${API_URL}/api/claim-reward`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          address: userAddress,
+          score: gameState.score,
+          gameMode: gameState.gameMode
+        })
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        // Show success notification
+        setPaymentError(null)
+        setGameState(prev => ({ ...prev, hasClaimedReward: true }))
+        
+        // Show transaction notification
+        alert(`🎉 Reward claimed! ${result.rewardAmountFormatted} tCRO sent to your wallet.\nTransaction: ${result.txHash}\nView on explorer: https://testnet.cronoscan.com/tx/${result.txHash}`)
+      } else {
+        throw new Error(result.error || 'Failed to claim reward')
+      }
       
-      const signer = getSigner()
-      const tx = await signer.writeContract({
-        address: CONTRACT_ADDRESS,
-        abi: CONTRACT_ABI,
-        functionName: 'claimReward'
-      })
-      await publicClient.waitForTransactionReceipt({ hash: tx })
-      setGameState(prev => ({ ...prev, hasClaimedReward: true }))
-      // Reset game state after claiming reward
-      setGameState({
-        bubbles: [],
-        score: 0,
-        lives: 3,
-        timeLeft: GAME_DURATION,
-        isPlaying: false,
-        isPaused: false,
-        gameMode: "classic",
-        level: 1,
-        hasStarted: false,
-        hasClaimedReward: true
-      })
     } catch (error) {
       console.error('Error claiming reward:', error)
-      // You might want to show a toast/notification here
+      setPaymentError(error instanceof Error ? error.message : 'Failed to claim reward')
     } finally {
       setIsClaiming(false)
     }
@@ -173,6 +387,7 @@ export default function CronosGamingDApp() {
   const gameIdRef = useRef<string>('')
   const startTimeRef = useRef<number | null>(null)
   const comboRef = useRef({ lastTap: 0, streak: 0 })
+  const paymentPollRef = useRef<IntervalHandle | null>(null)
 
   // Initialize game ID on component mount
   useEffect(() => {
@@ -264,7 +479,8 @@ export default function CronosGamingDApp() {
       ...prev,
       isPlaying: false,
       isPaused: false,
-      hasStarted: false,
+      // Keep hasStarted true so game over screen shows
+      hasStarted: true,
     }))
   }, [])
 
@@ -357,48 +573,59 @@ export default function CronosGamingDApp() {
     })
   }, [endGame])
 
-  const cleanupIntervals = useCallback(() => {
-    // Clear game loop interval if it exists
-    if (gameLoopRef.current !== null) {
-      clearInterval(gameLoopRef.current)
-      gameLoopRef.current = null
-    }
+  // Start game with payment check
+  const startGame = useCallback(async (mode: GameState["gameMode"]) => {
+    setPaymentError(null)
     
-    // Clear bubble spawn interval if it exists
-    if (bubbleSpawnRef.current !== null) {
-      clearInterval(bubbleSpawnRef.current)
-      bubbleSpawnRef.current = null
+    // Unlimited mode (survival/timeAttack) is free - no payment check needed
+    if (mode === "survival" || mode === "timeAttack") {
+      setIsPremium(false)
+      setFreePlaysRemaining(null)
+      startGameInternal(mode)
+      return
     }
-  }, [])
 
-  const startGame = useCallback((mode: GameState["gameMode"]) => {
-    // Clear any existing game loop
-    cleanupIntervals()
-    
-    // Generate new game ID if needed
-    if (!gameIdRef.current) {
-      gameIdRef.current = typeof crypto !== 'undefined' && 'randomUUID' in crypto
-        ? crypto.randomUUID()
-        : Math.random().toString(36).slice(2) + Date.now()
+    // Normal mode (classic with 3 lives) requires wallet and payment check
+    if (mode === "classic") {
+      if (!userAddress) {
+        setPaymentError('Please connect your wallet first to play normal mode')
+        return
+      }
+      
+      try {
+        setIsCheckingPayment(true)
+        const paymentStatus = await checkPaymentStatus(userAddress)
+        
+        if (!paymentStatus.allowed) {
+          if (paymentStatus.requiresPayment && paymentStatus.invoice) {
+            // Show payment UI and wait for payment
+            setIsCheckingPayment(false)
+            await handlePayment(paymentStatus.invoice, mode)
+            return
+          } else {
+            setPaymentError('Unable to start game. Please try again.')
+            setIsCheckingPayment(false)
+            return
+          }
+        }
+        
+        // Update free plays and premium status
+        setIsPremium(paymentStatus.isPremium)
+        setFreePlaysRemaining(paymentStatus.freePlayRemaining ?? null)
+        setIsCheckingPayment(false)
+        
+        // Start the game after payment is verified
+        startGameInternal(mode)
+      } catch (error) {
+        console.error('Error starting game:', error)
+        setPaymentError(error instanceof Error ? error.message : 'Failed to start game')
+        setIsCheckingPayment(false)
+      }
+    } else {
+      // For other modes, start directly
+      startGameInternal(mode)
     }
-    
-    // Reset game state
-    setGameState({
-      bubbles: [],
-      score: 0,
-      lives: mode === "survival" ? 3 : 999,
-      timeLeft: mode === "timeAttack" ? GAME_DURATION : 999,
-      isPlaying: true,
-      isPaused: false,
-      gameMode: mode,
-      level: 1,
-      hasStarted: false,
-    })
-    
-    // Set initial view and start time
-    setCurrentView("game")
-    startTimeRef.current = Date.now()
-  }, [])
+  }, [userAddress, checkPaymentStatus, handlePayment, startGameInternal])
 
   const pauseGame = useCallback(() => {
     setGameState(prev => ({ ...prev, isPaused: !prev.isPaused }))
@@ -491,13 +718,22 @@ export default function CronosGamingDApp() {
                 <div className="bg-blue-500/20 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
                   <Zap className="h-8 w-8 text-blue-400" />
                 </div>
-                <h3 className="text-xl font-bold text-white mb-2">Classic Mode</h3>
-                <p className="text-gray-400 mb-4">Pop as many bubbles as you can before time runs out!</p>
+                <h3 className="text-xl font-bold text-white mb-2">Normal Mode</h3>
+                <p className="text-gray-400 mb-2">3 lives - Earn rewards! (100 points = 1 tCRO)</p>
+                <p className="text-xs text-yellow-400 mb-4">💰 Play fee required after free plays</p>
                 <Button 
                   onClick={() => startGame("classic")} 
+                  disabled={isCheckingPayment}
                   className="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:opacity-90 transition-opacity"
                 >
-                  Play Now
+                  {isCheckingPayment ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Checking Payment...
+                    </>
+                  ) : (
+                    'Play Now'
+                  )}
                 </Button>
               </div>
               
@@ -506,7 +742,8 @@ export default function CronosGamingDApp() {
                   <Clock className="h-8 w-8 text-purple-400" />
                 </div>
                 <h3 className="text-xl font-bold text-white mb-2">Time Attack</h3>
-                <p className="text-gray-400 mb-4">Race against the clock to set a high score!</p>
+                <p className="text-gray-400 mb-2">Race against the clock to set a high score!</p>
+                <p className="text-xs text-green-400 mb-4">🆓 Free to play - No rewards</p>
                 <Button 
                   onClick={() => startGame("timeAttack")} 
                   className="w-full bg-gradient-to-r from-purple-500 to-pink-600 hover:opacity-90 transition-opacity"
@@ -520,7 +757,8 @@ export default function CronosGamingDApp() {
                   <Target className="h-8 w-8 text-pink-400" />
                 </div>
                 <h3 className="text-xl font-bold text-white mb-2">Survival</h3>
-                <p className="text-gray-400 mb-4">How long can you last? Don't let the bombs get you!</p>
+                <p className="text-gray-400 mb-2">How long can you last? Don't let the bombs get you!</p>
+                <p className="text-xs text-green-400 mb-4">🆓 Free to play - No rewards</p>
                 <Button 
                   onClick={() => startGame("survival")} 
                   className="w-full bg-gradient-to-r from-pink-500 to-rose-600 hover:opacity-90 transition-opacity"
@@ -529,6 +767,30 @@ export default function CronosGamingDApp() {
                 </Button>
               </div>
             </div>
+            
+            {/* Payment Status Display */}
+            {userAddress && (
+              <div className="mt-8 bg-gray-800/30 backdrop-blur-sm rounded-xl p-6 max-w-2xl mx-auto">
+                <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+                  <Wallet className="h-5 w-5" />
+                  Payment Status
+                </h2>
+                <div className="space-y-2">
+                  {isPremium ? (
+                    <Badge className="bg-green-600 text-white">Premium Player</Badge>
+                  ) : freePlaysRemaining !== null ? (
+                    <p className="text-gray-300">
+                      Free plays remaining: <span className="font-bold text-blue-400">{freePlaysRemaining}</span>
+                    </p>
+                  ) : (
+                    <p className="text-gray-300">Connect wallet to see payment status</p>
+                  )}
+                  {paymentError && (
+                    <p className="text-red-400 text-sm">{paymentError}</p>
+                  )}
+                </div>
+              </div>
+            )}
             
             <div className="mt-12 bg-gray-800/30 backdrop-blur-sm rounded-xl p-6 max-w-2xl mx-auto">
               <h2 className="text-2xl font-bold text-white mb-4">How to Play</h2>
@@ -545,6 +807,13 @@ export default function CronosGamingDApp() {
                   <div className="bg-pink-500/20 text-pink-400 rounded-full w-6 h-6 flex-shrink-0 flex items-center justify-center text-xs font-bold">3</div>
                   <p>Collect power-ups for special abilities</p>
                 </div>
+              </div>
+              <div className="mt-4 p-4 bg-yellow-900/20 rounded-lg border border-yellow-500/30">
+                <p className="text-sm text-yellow-200">
+                  <strong>💰 Rewards:</strong> In Normal Mode (3 lives), earn tCRO rewards! 
+                  <br />100 points = 1 tCRO. Rewards are sent directly to your wallet after claiming.
+                  <br />Free modes (Time Attack & Survival) don't have rewards.
+                </p>
               </div>
             </div>
           </div>
@@ -619,13 +888,92 @@ export default function CronosGamingDApp() {
               <div className="p-6 bg-gray-800 text-white text-center">
                 <h2 className="text-2xl font-bold mb-2">Game Over!</h2>
                 <p className="mb-4">Final Score: {gameState.score}</p>
+                
+                {/* Reward Information - Only for normal mode (classic with 3 initial lives) */}
+                {/* Debug: initialGameMode={initialGameMode}, initialLives={initialLives}, gameMode={gameState.gameMode} */}
+                {initialGameMode === "classic" && (
+                  <div className="mb-4 p-4 bg-purple-900/30 rounded-lg border border-purple-500/50">
+                    <div className="flex items-center justify-center gap-2 mb-2">
+                      <Coins className="h-5 w-5 text-yellow-400" />
+                      <p className="font-semibold">
+                        {rewardAmount && rewardAmount > 0 
+                          ? `Reward Available: ${rewardAmount} tCRO`
+                          : 'No reward yet'}
+                      </p>
+                      <p className="text-xs text-gray-400">(100 points = 1 tCRO)</p>
+                    </div>
+                    {rewardAmount && rewardAmount > 0 && !gameState.hasClaimedReward && (
+                      <Button
+                        onClick={claimReward}
+                        disabled={isClaiming || !userAddress || gameState.score < 100}
+                        className="mt-2 bg-gradient-to-r from-yellow-500 to-orange-600 hover:opacity-90"
+                      >
+                        {isClaiming ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            Claiming...
+                          </>
+                        ) : (
+                          <>
+                            <Wallet className="h-4 w-4 mr-2" />
+                            Claim {rewardAmount} tCRO
+                          </>
+                        )}
+                      </Button>
+                    )}
+                    {gameState.hasClaimedReward && (
+                      <Badge className="mt-2 bg-green-600">Reward Claimed ✓</Badge>
+                    )}
+                    {gameState.score < 100 && !gameState.hasClaimedReward && (
+                      <p className="text-xs text-yellow-400 mt-2">
+                        Score at least 100 points to earn rewards (Current: {gameState.score} points)
+                      </p>
+                    )}
+                  </div>
+                )}
+                
+                {/* Info for other modes - only show if NOT classic with 3 lives */}
+                {initialGameMode && initialGameMode !== "classic" && (
+                  <div className="mb-4 p-4 bg-blue-900/30 rounded-lg border border-blue-500/50">
+                    <p className="text-sm text-blue-300">
+                      {initialGameMode === "survival" || initialGameMode === "timeAttack" 
+                        ? "🎮 Free play mode - No rewards available"
+                        : "No rewards available"}
+                    </p>
+                  </div>
+                )}
+                
+                {/* Show message if classic mode but not 3 lives (shouldn't happen, but just in case) */}
+                {initialGameMode === "classic" && initialLives !== 3 && (
+                  <div className="mb-4 p-4 bg-yellow-900/30 rounded-lg border border-yellow-500/50">
+                    <p className="text-sm text-yellow-300">
+                      ⚠️ Rewards only available in normal mode (3 lives). Current mode has {initialLives} lives.
+                    </p>
+                  </div>
+                )}
+                
+                {/* Payment Status */}
+                {paymentError && (
+                  <div className="mb-4 p-3 bg-red-900/30 rounded-lg border border-red-500/50 text-sm">
+                    {paymentError}
+                  </div>
+                )}
+                
                 <div className="flex justify-center space-x-4">
                   <Button 
                     onClick={() => startGame(gameState.gameMode)} 
                     variant="secondary"
+                    disabled={isCheckingPayment}
                     className="bg-gradient-to-r from-blue-500 to-purple-600 hover:opacity-90"
                   >
-                    Play Again
+                    {isCheckingPayment ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Checking...
+                      </>
+                    ) : (
+                      'Play Again'
+                    )}
                   </Button>
                   <Button 
                     onClick={resetGame} 
@@ -639,6 +987,64 @@ export default function CronosGamingDApp() {
             )}
           </div>
         </div>
+        
+        {/* Payment Modal */}
+        {showPaymentModal && paymentInvoice && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+            <Card className="w-full max-w-md bg-gray-800 border-gray-700">
+              <CardHeader>
+                <CardTitle className="text-white flex items-center justify-between">
+                  <span>Payment Required</span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      if (paymentPollRef.current) {
+                        clearInterval(paymentPollRef.current)
+                        paymentPollRef.current = null
+                      }
+                      setShowPaymentModal(false)
+                      setPaymentInvoice(null)
+                      setPendingGameMode(null)
+                      setPaymentError(null)
+                    }}
+                    className="text-gray-400 hover:text-white"
+                  >
+                    ✕
+                  </Button>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="text-center">
+                  <p className="text-gray-300 mb-2">Pay 0.01 USDC to continue playing</p>
+                  <p className="text-sm text-gray-400 mb-4">
+                    Invoice ID: {paymentInvoice.id || 'N/A'}
+                  </p>
+                  
+                  {paymentError && (
+                    <div className="mb-4 p-3 bg-red-900/30 rounded-lg border border-red-500/50 text-sm text-red-300">
+                      {paymentError}
+                    </div>
+                  )}
+                  
+                  <div className="mb-4 p-4 bg-blue-900/20 rounded-lg border border-blue-500/30">
+                    <p className="text-sm text-blue-300 mb-2">
+                      💡 The payment will be processed automatically by the x402 agent.
+                    </p>
+                    <p className="text-xs text-gray-400">
+                      Waiting for payment verification...
+                    </p>
+                  </div>
+                  
+                  <div className="flex items-center justify-center gap-2 text-sm text-gray-400">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span>Checking payment status...</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
       </div>
     </div>
   )

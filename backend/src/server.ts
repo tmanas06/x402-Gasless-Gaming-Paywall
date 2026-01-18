@@ -3,6 +3,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import { PaymentService } from "./services/paymentService";
 import { GameService } from "./services/gameService";
+import { RewardService } from "./services/rewardService";
 
 dotenv.config();
 
@@ -16,10 +17,17 @@ app.use(express.json());
 // Services
 const paymentService = new PaymentService();
 const gameService = new GameService();
+let rewardService: RewardService;
 
 // Initialize services
-paymentService.initialize();
-gameService.initialize();
+try {
+  paymentService.initialize();
+  gameService.initialize();
+  rewardService = new RewardService();
+} catch (error) {
+  console.error("Failed to initialize reward service:", error);
+  console.error("Make sure REWARD_WALLET_PRIVATE_KEY is set in .env");
+}
 
 // Health check
 app.get("/health", (req: Request, res: Response) => {
@@ -121,7 +129,7 @@ app.get("/api/stats/:address", async (req: Request, res: Response) => {
 // Submit game score
 app.post("/api/score", async (req: Request, res: Response) => {
   try {
-    const { address, score, isPremium } = req.body;
+    const { address, score, isPremium, gameMode } = req.body;
 
     if (!address || score === undefined) {
       return res.status(400).json({ error: "Address and score required" });
@@ -132,6 +140,43 @@ app.post("/api/score", async (req: Request, res: Response) => {
   } catch (error) {
     console.error("Score submission error:", error);
     res.status(500).json({ error: "Failed to record score" });
+  }
+});
+
+// Claim reward endpoint
+app.post("/api/claim-reward", async (req: Request, res: Response) => {
+  try {
+    const { address, score, gameMode } = req.body;
+
+    if (!address || score === undefined || !gameMode) {
+      return res.status(400).json({ error: "Address, score, and gameMode required" });
+    }
+
+    if (!rewardService) {
+      return res.status(500).json({ error: "Reward service not initialized" });
+    }
+
+    const result = await rewardService.sendReward(address, score, gameMode);
+    
+    if (result.success) {
+      res.json({
+        success: true,
+        txHash: result.txHash,
+        rewardAmount: result.rewardAmount,
+        rewardAmountFormatted: (parseInt(result.rewardAmount) / 1e18).toString(),
+        message: `Reward of ${parseInt(result.rewardAmount) / 1e18} tCRO sent successfully`,
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        error: result.error,
+        rewardAmount: result.rewardAmount,
+        rewardAmountFormatted: (parseInt(result.rewardAmount) / 1e18).toString(),
+      });
+    }
+  } catch (error) {
+    console.error("Claim reward error:", error);
+    res.status(500).json({ error: "Failed to claim reward" });
   }
 });
 

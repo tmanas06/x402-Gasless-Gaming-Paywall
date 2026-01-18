@@ -2,7 +2,9 @@
 
 import { useEffect, useRef, useState, useCallback, useLayoutEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Play, RotateCcw, Smartphone } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Play, RotateCcw, Smartphone, Wallet } from 'lucide-react';
+import { loadKey } from '@/lib/keyCache';
 
 type Direction = 'UP' | 'DOWN' | 'LEFT' | 'RIGHT';
 type Position = { x: number; y: number };
@@ -21,6 +23,7 @@ export default function SnakeGame() {
   const [cellSize, setCellSize] = useState(20);
   const [showMobileControls, setShowMobileControls] = useState(false);
   const [touchStart, setTouchStart] = useState<{x: number, y: number} | null>(null);
+  const [userAddress, setUserAddress] = useState<string | null>(null);
   const gameAreaRef = useRef<HTMLDivElement>(null);
   
   const snakeRef = useRef<Position[]>([]);
@@ -392,6 +395,15 @@ export default function SnakeGame() {
   useEffect(() => {
     initGame();
   }, [initGame]);
+
+  // Check wallet connection
+  useEffect(() => {
+    const cachedKey = loadKey();
+    if (cachedKey) {
+      // User is connected - we can get address if needed
+      setUserAddress('connected');
+    }
+  }, []);
 
   // Handle touch controls
   const handleTouchStart = (e: React.TouchEvent) => {

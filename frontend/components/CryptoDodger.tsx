@@ -3,8 +3,10 @@
 import { useCallback, useEffect, useRef, useState, useMemo } from 'react'
 import { getSigner, publicClient } from '@/lib/viem'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { v4 as uuidv4 } from 'uuid'
-import { ArrowLeft, ArrowRight, RotateCcw, Play, Pause } from 'lucide-react'
+import { ArrowLeft, ArrowRight, RotateCcw, Play, Pause, Wallet } from 'lucide-react'
+import { loadKey } from '@/lib/keyCache'
 
 type ObjectType = 'coin' | 'bomb' | 'freeze'
 
@@ -44,6 +46,7 @@ const CryptoDodger = () => {
   })
 
   const [playerX, setPlayerX] = useState(150)
+  const [userAddress, setUserAddress] = useState<string | null>(null)
   const gameAreaRef = useRef<HTMLDivElement>(null)
   const gameIdRef = useRef<string>('')
   const playerSize = 40
@@ -64,6 +67,15 @@ const CryptoDodger = () => {
     }
     return () => {
       gameIdRef.current = ''
+    }
+  }, [])
+
+  // Check wallet connection
+  useEffect(() => {
+    const cachedKey = loadKey();
+    if (cachedKey) {
+      // User is connected
+      setUserAddress('connected');
     }
   }, [])
 
@@ -494,6 +506,18 @@ const CryptoDodger = () => {
       </div>
 
       {instructions}
+
+      {/* Payment Status - Free to play */}
+      {userAddress && (
+        <div className="mt-6 bg-gray-800/30 backdrop-blur-sm rounded-xl p-4 max-w-md mx-auto">
+          <div className="flex items-center justify-center gap-2 mb-2">
+            <Wallet className="h-4 w-4 text-green-400" />
+            <h3 className="text-sm font-semibold text-white">Payment Status</h3>
+          </div>
+          <Badge className="bg-green-600 text-white">🆓 Free to Play - No payment required</Badge>
+          <p className="text-xs text-gray-400 mt-2 text-center">This game is free and doesn't offer rewards</p>
+        </div>
+      )}
     </div>
   )
 }
