@@ -1,173 +1,253 @@
-# Deployment Guide - Gasless Arcade
+# Deployment Guide
 
-## 🚀 Running All Services Locally
+This monorepo is structured for deployment on Vercel with:
+- **Frontend** → Deployed on Vercel as the main project (React/Next.js, served at `/`)
+- **Backend** → Deployed on Vercel as an API (Express, served at `/api/*`)
+- **Agent** → Runs locally (for demo) and can be manually triggered against the deployed backend
 
-### Option 1: Using npm scripts (Recommended)
+## Architecture
 
-Install dependencies for all services:
-```bash
-npm run install:all
-```
+### Frontend (Next.js)
+- Root directory: `frontend/`
+- Served at: `/` (root)
+- API calls use relative `/api` paths in production
 
-Start all services in development mode:
-```bash
-npm run dev
-```
+### Backend (Express)
+- Root directory: `backend/`
+- Served at: `/api/*` via Vercel serverless functions
+- Entry point: `backend/api/index.ts`
+
+### Agent (Node.js)
+- Root directory: `agent/`
+- Runs locally only
+- Configurable via `BACKEND_URL` environment variable
+
+## Local Development
+
+### Prerequisites
+- Node.js 18+
+- npm or yarn
+
+### Setup
+
+1. **Install all dependencies:**
+   ```bash
+   npm run install:all
+   ```
+
+2. **Start all services:**
+   ```bash
+   npm run dev
+   ```
 
 This will start:
-- **Frontend** on `http://localhost:3000`
-- **Backend** on `http://localhost:5000`
-- **Agent** on the configured port
+- Frontend on `http://localhost:3000`
+- Backend on `http://localhost:5000`
+- Agent (if configured)
 
-### Option 2: Using start scripts
-
-**Windows:**
-```bash
-start-all.bat
-```
-
-**Mac/Linux:**
-```bash
-chmod +x start-all.sh
-./start-all.sh
-```
-
-**Node.js (cross-platform):**
-```bash
-node start-all.js
-```
-
-### Option 3: Manual start
-
-Open 3 separate terminals:
-
-**Terminal 1 - Frontend:**
-```bash
-cd frontend
-npm run dev
-```
-
-**Terminal 2 - Backend:**
-```bash
-cd backend
-npm run dev
-```
-
-**Terminal 3 - Agent:**
-```bash
-cd agent
-npm run dev
-```
-
-## 🐳 Docker Deployment
-
-### Build and run all services with Docker Compose:
+### Individual Service Commands
 
 ```bash
-docker-compose up --build
+# Frontend only
+npm run dev:frontend
+
+# Backend only
+npm run dev:backend
+
+# Agent only
+npm run dev:agent
 ```
 
-This will:
-- Build all three services
-- Start them in isolated containers
-- Set up networking between services
+## Vercel Deployment
 
-### Stop services:
-```bash
-docker-compose down
-```
+Since Vercel doesn't natively support multiple root directories in a single project, deploy as **two separate Vercel projects**:
 
-## ☁️ Vercel Deployment
+### Project 1: Frontend
 
-### Important Notes:
-Vercel only supports serverless functions for Next.js. For this project:
-- **Frontend**: Can be deployed to Vercel
-- **Backend**: Needs separate hosting (Railway, Render, AWS, etc.)
-- **Agent**: Needs separate hosting (same as backend or different)
+1. **Create a new Vercel project:**
+   - Go to [Vercel Dashboard](https://vercel.com/dashboard)
+   - Click "Add New Project"
+   - Import your GitHub repository
+   - Set **Root Directory** to `frontend`
 
-### Deploy Frontend to Vercel:
+2. **Configure Build Settings:**
+   - Framework Preset: Next.js
+   - Build Command: `npm run build` (auto-detected)
+   - Output Directory: `.next` (auto-detected)
+   - Install Command: `npm install` (auto-detected)
 
-1. **Set environment variables in Vercel:**
+3. **Set Environment Variables:**
    ```
-   NEXT_PUBLIC_API_URL=https://your-backend-url.railway.app
+   NEXT_PUBLIC_BACKEND_URL=https://your-backend-project.vercel.app
+   NEXT_PUBLIC_PRIVY_APP_ID=your_privy_app_id
+   NEXT_PUBLIC_PRIVY_CLIENT_ID=your_privy_client_id
    ```
 
-2. **Deploy:**
+4. **Deploy:**
+   - Click "Deploy"
+   - Note the frontend URL (e.g., `https://your-frontend.vercel.app`)
+
+### Project 2: Backend
+
+1. **Create a second Vercel project:**
+   - Go to [Vercel Dashboard](https://vercel.com/dashboard)
+   - Click "Add New Project"
+   - Import the same GitHub repository
+   - Set **Root Directory** to `backend`
+
+2. **Configure Build Settings:**
+   - Framework Preset: Other
+   - Build Command: `npm install && npm run build`
+   - Output Directory: `dist`
+   - Install Command: `npm install`
+
+3. **Set Runtime:**
+   - Go to Settings → Functions
+   - Set Node.js Version to 18.x
+
+4. **Set Environment Variables:**
+   ```
+   PORT=5000
+   NODE_ENV=production
+   GROQ_API_KEY=your_groq_api_key
+   GROQ_MODEL=llama-3.3-70b-versatile
+   CRONOS_TESTNET_RPC=https://evm-t3.cronos.org
+   REWARD_WALLET_PRIVATE_KEY=your_reward_wallet_private_key
+   CROSCAN_API_KEY=your_cronoscan_api_key
+   GAME_FREE_PLAYS=3
+   GAME_FEE_AMOUNT=10000000
+   FRONTEND_URL=https://your-frontend.vercel.app
+   ```
+
+5. **Configure Routes:**
+   - Create `vercel.json` in backend root (or update existing):
+   ```json
+   {
+     "version": 2,
+     "builds": [
+       {
+         "src": "api/index.ts",
+         "use": "@vercel/node"
+       }
+     ],
+     "routes": [
+       {
+         "src": "/api/(.*)",
+         "dest": "/api/index.ts"
+       },
+       {
+         "src": "/health",
+         "dest": "/api/index.ts"
+       }
+     ]
+   }
+   ```
+
+6. **Deploy:**
+   - Click "Deploy"
+   - Note the backend URL (e.g., `https://your-backend.vercel.app`)
+
+### Post-Deployment Configuration
+
+1. **Update Frontend Environment Variable:**
+   - Go to Frontend project → Settings → Environment Variables
+   - Update `NEXT_PUBLIC_BACKEND_URL` with your backend URL
+   - Redeploy frontend
+
+2. **Update Backend CORS:**
+   - Go to Backend project → Settings → Environment Variables
+   - Update `FRONTEND_URL` with your frontend URL
+   - Redeploy backend
+
+## Running Agent Against Deployed Backend
+
+The agent can be run locally and configured to use the deployed backend:
+
+1. **Navigate to agent directory:**
    ```bash
-   cd frontend
-   vercel
+   cd agent
    ```
 
-### Deploy Backend (Railway/Render/AWS):
+2. **Create/update `.env` file:**
+   ```env
+   BACKEND_URL=https://your-backend.vercel.app
+   AGENT_PRIVATE_KEY=your_agent_private_key
+   CRONOS_RPC=https://evm-t3.cronos.org
+   GROQ_API_KEY=your_groq_api_key
+   GROQ_MODEL=llama-3.3-70b-versatile
+   AI_TYPE=both
+   MAX_PAYMENT_PER_TX=0.05
+   DAILY_SPENDING_LIMIT=0.50
+   AUTO_PAY_ENABLED=true
+   ```
 
-**Railway:**
-1. Connect your GitHub repo
-2. Select `backend` folder as root
-3. Set environment variables
-4. Deploy
+3. **Run the agent:**
+   ```bash
+   npm run dev
+   ```
 
-**Render:**
-1. Create a new Web Service
-2. Point to `backend` folder
-3. Set build command: `npm install && npm run build`
-4. Set start command: `npm start`
-5. Add environment variables
+The agent will now make requests to your deployed backend instead of localhost.
 
-### Environment Variables Needed:
+## Environment Variables Reference
 
-**Backend (.env):**
-```
-PORT=5000
-GROQ_API_KEY=your_groq_api_key
-GROQ_MODEL=llama-3.3-70b-versatile
-CRONOS_TESTNET_RPC=https://evm-t3.cronos.org
-REWARD_WALLET_PRIVATE_KEY=your_private_key
-GAME_FREE_PLAYS=3
-GAME_FEE_AMOUNT=10000000
-GAME_FEE_CURRENCY=USDC
-FACILITATOR_ADDRESS=your_facilitator_address
-```
+### Backend Environment Variables
 
-**Agent (.env):**
-```
-GROQ_API_KEY=your_groq_api_key
-GROQ_MODEL=llama-3.3-70b-versatile
-AI_TYPE=both
-GAME_API_URL=https://your-backend-url.railway.app
-AGENT_PRIVATE_KEY=your_agent_private_key
-CRONOS_RPC=https://evm-t3.cronos.org
-MAX_PAYMENT_PER_TX=0.05
-DAILY_SPENDING_LIMIT=0.50
-AUTO_PAY_ENABLED=true
-```
+| Variable | Description | Required | Default |
+|----------|-------------|----------|---------|
+| `PORT` | Server port (not used in Vercel) | No | `5000` |
+| `NODE_ENV` | Environment | No | `production` |
+| `GROQ_API_KEY` | GROQ API key for AI chat | Yes | - |
+| `GROQ_MODEL` | GROQ model to use | No | `llama-3.3-70b-versatile` |
+| `CRONOS_TESTNET_RPC` | Cronos testnet RPC URL | Yes | `https://evm-t3.cronos.org` |
+| `REWARD_WALLET_PRIVATE_KEY` | Private key for reward wallet | Yes | - |
+| `CROSCAN_API_KEY` | Cronoscan API key | No | - |
+| `GAME_FREE_PLAYS` | Number of free plays allowed | No | `3` |
+| `GAME_FEE_AMOUNT` | Game fee amount | No | `10000000` |
+| `FRONTEND_URL` | Frontend URL for CORS | Yes | - |
 
-## 📋 Production Checklist
+### Frontend Environment Variables
 
-- [ ] Set all environment variables
-- [ ] Update `NEXT_PUBLIC_API_URL` in frontend
-- [ ] Build and test all services
-- [ ] Configure CORS in backend for frontend domain
-- [ ] Set up SSL certificates
-- [ ] Configure rate limiting
-- [ ] Set up monitoring/logging
-- [ ] Test AI chat functionality
-- [ ] Test payment flows
-- [ ] Test reward claiming
+| Variable | Description | Required | Default |
+|----------|-------------|----------|---------|
+| `NEXT_PUBLIC_BACKEND_URL` | Backend API URL | No | `/api` (relative) |
+| `NEXT_PUBLIC_PRIVY_APP_ID` | Privy App ID | Yes | - |
+| `NEXT_PUBLIC_PRIVY_CLIENT_ID` | Privy Client ID | Yes | - |
 
-## 🔧 Troubleshooting
+### Agent Environment Variables
 
-**Services won't start:**
-- Check that all dependencies are installed: `npm run install:all`
-- Verify environment variables are set
-- Check ports aren't already in use
+| Variable | Description | Required | Default |
+|----------|-------------|----------|---------|
+| `BACKEND_URL` | Backend API URL | No | `http://localhost:5000` |
+| `GAME_API_URL` | Alias for BACKEND_URL | No | Same as BACKEND_URL |
+| `AGENT_PRIVATE_KEY` | Agent wallet private key | Yes | - |
+| `CRONOS_RPC` | Cronos RPC URL | Yes | `https://evm-t3.cronos.org` |
+| `GROQ_API_KEY` | GROQ API key | No | - |
+| `GROQ_MODEL` | GROQ model | No | `llama-3.3-70b-versatile` |
+| `AI_TYPE` | AI type: cronos/groq/both | No | `cronos` |
+| `MAX_PAYMENT_PER_TX` | Max payment per transaction | No | `0.05` |
+| `DAILY_SPENDING_LIMIT` | Daily spending limit | No | `0.50` |
+| `AUTO_PAY_ENABLED` | Enable auto-pay | No | `false` |
 
-**AI Chat not working:**
-- Verify `GROQ_API_KEY` is set in backend
-- Check GROQ model is available (use `llama-3.3-70b-versatile`)
-- Check backend logs for errors
+## Troubleshooting
 
-**Frontend can't connect to backend:**
-- Verify `NEXT_PUBLIC_API_URL` is correct
-- Check CORS settings in backend
-- Ensure backend is running and accessible
+### Backend not responding
+- Check Vercel function logs
+- Verify all environment variables are set
+- Check that routes are configured correctly in `vercel.json`
 
+### Frontend can't connect to backend
+- Verify `NEXT_PUBLIC_BACKEND_URL` is set correctly
+- Check browser console for CORS errors
+- Ensure backend `FRONTEND_URL` includes your frontend domain
+
+### Agent can't connect to backend
+- Verify `BACKEND_URL` is set to the deployed backend URL
+- Check network connectivity
+- Verify backend is deployed and accessible
+
+## Notes
+
+- **x402/EIP-3009 Logic**: All payment protocol logic remains unchanged
+- **Local Development**: Use `npm run dev` from root to start all services locally
+- **Production**: Frontend and backend are deployed separately on Vercel
+- **Agent**: Runs locally only, can be configured to use deployed backend

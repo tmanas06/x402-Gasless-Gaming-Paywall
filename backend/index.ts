@@ -2,12 +2,12 @@ import express, { Request, Response } from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import { v4 as uuidv4 } from "uuid";
-import { PaymentService } from "./services/paymentService";
-import { GameService } from "./services/gameService";
-import { RewardService } from "./services/rewardService";
-import { AIChatService } from "./services/aiChatService";
-import { MarketService } from "./services/marketService";
-import { createLeaderboardService } from "./services/leaderboardService";
+import { PaymentService } from "./src/services/paymentService";
+import { GameService } from "./src/services/gameService";
+import { RewardService } from "./src/services/rewardService";
+import { AIChatService } from "./src/services/aiChatService";
+import { MarketService } from "./src/services/marketService";
+import { createLeaderboardService } from "./src/services/leaderboardService";
 
 dotenv.config();
 
@@ -414,6 +414,12 @@ app.get("/api/market/leaderboard", async (req: Request, res: Response) => {
   }
 });
 
-app.listen(port, () => {
-  console.log(`Gasless Arcade backend running on http://localhost:${port}`);
-});
+// Export app for Vercel serverless functions
+export default app;
+
+// For local development, start the server
+if (require.main === module) {
+  app.listen(port, () => {
+    console.log(`Gasless Arcade backend running on http://localhost:${port}`);
+  });
+}

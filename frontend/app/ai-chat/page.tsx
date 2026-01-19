@@ -33,7 +33,12 @@ export default function AIChatPage() {
     scrollToBottom();
   }, [messages]);
 
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+  // In development, always use localhost:5000 for backend
+  // In production, use NEXT_PUBLIC_BACKEND_URL or fallback to same origin + /api
+  const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 
+    (process.env.NODE_ENV === 'development' 
+      ? 'http://localhost:5000'
+      : (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5000'));
 
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;

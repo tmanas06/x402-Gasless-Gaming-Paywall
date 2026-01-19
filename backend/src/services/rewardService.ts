@@ -143,4 +143,51 @@ export class RewardService {
       (r) => r.address === addressLower
     );
   }
+
+  /**
+   * Get the reward wallet address
+   */
+  getRewardWalletAddress(): string {
+    return this.wallet.address;
+  }
+
+  /**
+   * Get leaderboard data from in-memory rewards
+   */
+  getLeaderboardFromMemory(limit: number = 10): Array<{
+    address: string;
+    totalPoints: number;
+    totalRewards: number;
+    lastRewardTime: number;
+  }> {
+    const leaderboardMap = new Map<string, {
+      address: string;
+      totalPoints: number;
+      totalRewards: number;
+      lastRewardTime: number;
+    }>();
+
+    // Aggregate rewards by address
+    this.rewards.forEach((record) => {
+      const address = record.address.toLowerCase();
+      const entry = leaderboardMap.get(address) || {
+        address,
+        totalPoints: 0,
+        totalRewards: 0,
+        lastRewardTime: 0,
+      };
+
+      // Convert reward amount (wei) to tCRO, then to points (1 tCRO = 100 points)
+      const tCROAmount = parseFloat(ethers.formatEther(record.rewardAmount));
+      entry.totalPoints += tCROAmount * this.REWARD_RATE;
+      entry.totalRewards += 1;
+      entry.lastRewardTime = Math.max(entry.lastRewardTime, record.timestamp);
+
+      leaderboardMap.set(address, entry);
+    });
+
+    return Array.from(leaderboardMap.values())
+      .sort((a, b) => b.totalPoints - a.totalPoints || b.lastRewardTime - a.lastRewardTime)
+      .slice(0, limit);
+  }
 }

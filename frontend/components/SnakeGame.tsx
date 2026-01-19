@@ -31,7 +31,12 @@ export default function SnakeGame() {
   const [rewardError, setRewardError] = useState<string | null>(null);
   const gameAreaRef = useRef<HTMLDivElement>(null);
   
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+  // In development, always use localhost:5000 for backend
+  // In production, use NEXT_PUBLIC_BACKEND_URL or fallback to same origin + /api
+  const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 
+    (process.env.NODE_ENV === 'development' 
+      ? 'http://localhost:5000'
+      : (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5000'));
   
   const snakeRef = useRef<Position[]>([]);
   const foodRef = useRef<Position>({ x: 0, y: 0 });

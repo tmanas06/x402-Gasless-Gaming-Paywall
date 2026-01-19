@@ -1,4 +1,6 @@
 import axios from 'axios';
+import { ethers } from 'ethers';
+import { RewardService } from './rewardService';
 
 interface LeaderboardEntry {
   address: string;
@@ -8,121 +10,185 @@ interface LeaderboardEntry {
 }
 
 export class LeaderboardService {
-  private readonly CRO_FAUCET_ADDRESS = '0xB4cd671bd612C996A21F48170e30382449FFD864';
-  private readonly CROSCAN_API_KEY = process.env.CROSCAN_API_KEY || 'YourApiKeyToken';
-  // Updated to use testnet API endpoint
-  private readonly CROSCAN_API_URL = 'https://cronos.org/explorer/testnet3/api';
-  // tCRO token address on testnet
-  private readonly T_CRO_TOKEN = '0x2D03b6C79A5Bc289dD8523a4D55B529962a82eA6';
-  private readonly REWARD_AMOUNT = 1; // 1 tCRO per reward
+  private provider: ethers.Provider;
+  private rewardService: RewardService;
+  private readonly REWARD_RATE = 100; // 100 points = 1 tCRO
+  
+  // BlockScout API endpoints (try multiple)
+  private readonly BLOCKSCOUT_APIS = [
+    'https://testnet.cronoscan.com/api',
+    'https://cronos.org/explorer/testnet3/api',
+  ];
+  private readonly CROSCAN_API_KEY = process.env.CROSCAN_API_KEY || '';
 
+  constructor(rewardService: RewardService) {
+    const rpcUrl = process.env.CRONOS_TESTNET_RPC || "https://evm-t3.cronos.org";
+    this.provider = new ethers.JsonRpcProvider(rpcUrl);
+    this.rewardService = rewardService;
+  }
+
+  /**
+   * Method 1: Get leaderboard from in-memory rewards (fastest, most reliable)
+   */
+  private getLeaderboardFromMemory(limit: number): LeaderboardEntry[] {
+    try {
+      const rewards = this.rewardService.getLeaderboardFromMemory(limit);
+      return rewards.map(entry => ({
+        address: entry.address,
+        totalPoints: entry.totalPoints,
+        lastRewardTime: entry.lastRewardTime,
+        totalRewards: entry.totalRewards,
+      }));
+    } catch (error) {
+      console.error('Error getting leaderboard from memory:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Method 2: Query BlockScout API for native CRO transfers
+   */
+  private async getLeaderboardFromBlockScout(limit: number): Promise<LeaderboardEntry[]> {
+    const rewardWalletAddress = this.rewardService.getRewardWalletAddress();
+    
+    for (const apiUrl of this.BLOCKSCOUT_APIS) {
+      try {
+        console.log(`Trying BlockScout API: ${apiUrl}`);
+        console.log(`Querying transactions FROM: ${rewardWalletAddress}`);
+
+        // Use 'txlist' for native CRO transfers (not 'tokentx')
+        const response = await axios.get(apiUrl, {
+          params: {
+            module: 'account',
+            action: 'txlist', // Changed from 'tokentx' to 'txlist' for native transfers
+            address: rewardWalletAddress, // Query FROM the reward wallet
+            startblock: 0,
+            endblock: 99999999,
+            sort: 'desc',
+            apikey: this.CROSCAN_API_KEY || undefined
+          },
+          timeout: 30000,
+          validateStatus: () => true
+        });
+
+        console.log(`BlockScout API response status: ${response.status}`);
+        
+        if (response.status !== 200) {
+          console.warn(`API returned status ${response.status}, trying next endpoint...`);
+          continue;
+        }
+
+        if (!response.data || typeof response.data !== 'object') {
+          console.warn('Invalid response format, trying next endpoint...');
+          continue;
+        }
+
+        // Handle API error status
+        if (response.data.status !== '1') {
+          console.warn(`API returned status '${response.data.status}': ${response.data.message}`);
+          if (response.data.message?.includes('No transactions found')) {
+            // This is okay - just means no transactions yet
+            return [];
+          }
+          continue; // Try next API endpoint
+        }
+
+        // Ensure result is an array
+        if (!Array.isArray(response.data.result)) {
+          console.warn('Expected result to be an array, got:', typeof response.data.result);
+          continue;
+        }
+
+        console.log(`Found ${response.data.result.length} transactions`);
+
+        // Process transactions to create leaderboard
+        const leaderboardMap = new Map<string, LeaderboardEntry>();
+
+        response.data.result.forEach((tx: any) => {
+          // Only process outbound transfers FROM the reward wallet TO players
+          if (tx.from && 
+              tx.from.toLowerCase() === rewardWalletAddress.toLowerCase() && 
+              tx.to && 
+              tx.value && 
+              tx.value !== '0') {
+            
+            const amount = parseFloat(tx.value) / 1e18; // Convert from wei to tCRO
+            
+            // Only count transactions that look like rewards (positive amounts)
+            if (amount > 0) {
+              const recipientAddress = tx.to.toLowerCase();
+              const entry = leaderboardMap.get(recipientAddress) || {
+                address: recipientAddress,
+                totalPoints: 0,
+                lastRewardTime: 0,
+                totalRewards: 0
+              };
+              
+              const timestamp = parseInt(tx.timeStamp) * 1000; // Convert to milliseconds
+              
+              // Convert tCRO to points (1 tCRO = 100 points)
+              entry.totalPoints += amount * this.REWARD_RATE;
+              entry.totalRewards += 1;
+              entry.lastRewardTime = Math.max(entry.lastRewardTime, timestamp);
+              
+              leaderboardMap.set(recipientAddress, entry);
+            }
+          }
+        });
+
+        // Convert map to array and sort by total points (descending)
+        const leaderboard = Array.from(leaderboardMap.values())
+          .sort((a, b) => b.totalPoints - a.totalPoints || b.lastRewardTime - a.lastRewardTime)
+          .slice(0, limit);
+
+        console.log(`Successfully fetched ${leaderboard.length} leaderboard entries from BlockScout`);
+        return leaderboard;
+
+      } catch (error: any) {
+        console.error(`Error querying BlockScout API (${apiUrl}):`, error.message);
+        // Continue to next API endpoint
+        continue;
+      }
+    }
+
+    return [];
+  }
+
+  /**
+   * Main method: Combines all methods with fallback strategy
+   */
   async getLeaderboard(limit: number = 10): Promise<LeaderboardEntry[]> {
     try {
-      console.log('Fetching leaderboard data...');
-      console.log('Using API URL:', this.CROSCAN_API_URL);
-      console.log('Token address:', this.T_CRO_TOKEN);
-      console.log('Faucet address:', this.CRO_FAUCET_ADDRESS);
+      // Method 1: Start with in-memory data (fastest, most reliable)
+      const memoryLeaderboard = this.getLeaderboardFromMemory(limit);
       
-      // Get all token transfers from the faucet address
-      const response = await axios.get(`${this.CROSCAN_API_URL}`, {
-        params: {
-          module: 'account',
-          action: 'tokentx',
-          contractaddress: this.T_CRO_TOKEN,
-          address: this.CRO_FAUCET_ADDRESS,
-          startblock: 0,
-          endblock: 99999999,
-          sort: 'desc',
-          apikey: this.CROSCAN_API_KEY
-        },
-        // Add timeout and better error handling
-        timeout: 10000,
-        validateStatus: () => true // Always resolve the promise
-      });
-
-      console.log('Cronos API response status:', response.status);
-      console.log('Response data:', {
-        status: response.data.status,
-        message: response.data.message,
-        resultCount: Array.isArray(response.data.result) ? response.data.result.length : 'not an array',
-        resultType: typeof response.data.result
-      });
-
-      // Handle non-200 status codes
-      if (response.status !== 200) {
-        console.error('Cronos API returned non-200 status:', response.status);
-        return [];
+      if (memoryLeaderboard.length > 0) {
+        console.log(`Using in-memory leaderboard: ${memoryLeaderboard.length} entries`);
+        return memoryLeaderboard;
       }
 
-      // Handle empty or invalid responses
-      if (!response.data || typeof response.data !== 'object') {
-        console.error('Invalid response format from Cronos API');
-        return [];
-      }
-
-      // Handle API error status
-      if (response.data.status !== '1') {
-        console.warn('Cronos API returned non-success status:', response.data);
-        // Check for rate limiting or API key issues
-        if (response.data.message?.includes('rate limit') || 
-            response.data.message?.includes('API key') ||
-            response.data.result === 'Max rate limit reached') {
-          console.error('API rate limit reached or invalid API key');
-        }
-        return [];
-      }
-
-      // Ensure result is an array
-      if (!Array.isArray(response.data.result)) {
-        console.error('Expected result to be an array, got:', typeof response.data.result);
-        return [];
-      }
-
-      // Process transactions to create leaderboard
-      const leaderboardMap = new Map<string, LeaderboardEntry>();
+      // Method 2: Fallback to BlockScout API to get historical data
+      console.log('In-memory leaderboard empty, querying BlockScout API...');
+      const blockScoutLeaderboard = await this.getLeaderboardFromBlockScout(limit);
       
-      if (!response.data.result || !Array.isArray(response.data.result)) {
-        console.warn('No valid transaction data in response');
-        return [];
+      if (blockScoutLeaderboard.length > 0) {
+        console.log(`Using BlockScout leaderboard: ${blockScoutLeaderboard.length} entries`);
+        return blockScoutLeaderboard;
       }
-      
-      response.data.result.forEach((tx: any) => {
-        // Only process inbound transfers to the faucet
-        if (tx.to && tx.to.toLowerCase() === this.CRO_FAUCET_ADDRESS.toLowerCase()) {
-          const amount = parseFloat(tx.value) / 1e18; // Convert from wei to tCRO
-          
-          // Only count full tCRO rewards (1 tCRO = 1 reward)
-          if (amount === this.REWARD_AMOUNT) {
-            const address = tx.from.toLowerCase();
-            const entry = leaderboardMap.get(address) || {
-              address,
-              totalPoints: 0,
-              lastRewardTime: 0,
-              totalRewards: 0
-            };
-            
-            const timestamp = parseInt(tx.timeStamp) * 1000; // Convert to milliseconds
-            
-            entry.totalPoints += amount * 100; // Each tCRO represents 100 points
-            entry.totalRewards += 1;
-            entry.lastRewardTime = Math.max(entry.lastRewardTime, timestamp);
-            
-            leaderboardMap.set(address, entry);
-          }
-        }
-      });
 
-      // Convert map to array and sort by total points (descending)
-      return Array.from(leaderboardMap.values())
-        .sort((a, b) => b.totalPoints - a.totalPoints || b.lastRewardTime - a.lastRewardTime)
-        .slice(0, limit);
+      // If both methods return empty, return empty array
+      console.log('No leaderboard data found from any source');
+      return [];
 
     } catch (error) {
       console.error('Error fetching leaderboard:', error);
-      throw new Error('Failed to fetch leaderboard data');
+      // Return empty array instead of throwing to prevent UI errors
+      return [];
     }
   }
 }
 
-// Singleton instance
-export const leaderboardService = new LeaderboardService();
+// Factory function to create leaderboard service
+export const createLeaderboardService = (rewardService: RewardService) => {
+  return new LeaderboardService(rewardService);
+};

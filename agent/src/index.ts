@@ -67,7 +67,7 @@ class AutoPayAgent {
 
     this.provider = new ethers.JsonRpcProvider(rpcUrl);
     this.wallet = new ethers.Wallet(privateKey, this.provider);
-    this.gameApiUrl = process.env.GAME_API_URL || "http://localhost:5000";
+    this.gameApiUrl = process.env.BACKEND_URL || process.env.GAME_API_URL || "http://localhost:5000";
 
     this.rules = {
       maxPaymentPerTx: parseFloat(

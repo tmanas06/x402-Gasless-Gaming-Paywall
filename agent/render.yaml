@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: gasless-arcade-agent
+    env: node
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
