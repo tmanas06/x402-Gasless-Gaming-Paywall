@@ -41,6 +41,8 @@
     "@reown/appkit": "^1.7.9",
     "@reown/appkit-adapter-ethers": "^1.7.9",
     "@reown/appkit-adapter-wagmi": "^1.7.9",
+    "@solana-program/system": "^0.10.0",
+    "@solana-program/token": "^0.9.0",
     "@tanstack/react-query": "^5.80.7",
     "@types/uuid": "^10.0.0",
     "autoprefixer": "^10.4.20",
