@@ -1,20 +1,74 @@
 'use client';
 
-import { Trophy, Crown, Medal, Award } from 'lucide-react';
+import { Trophy, Crown, Medal, Award, Loader2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { API_ENDPOINTS } from '@/src/config';
+
+interface LeaderboardEntry {
+  address: string;
+  totalPoints: number;
+  correctGuesses: number;
+  totalGuesses: number;
+}
 
 export default function LeaderboardPage() {
-  const rankings = [
-    { rank: 1, player: "Pro Gamer", score: 15000, trophy: <Crown className="w-5 h-5 text-yellow-400" /> },
-    { rank: 2, player: "Arcade Master", score: 12800, trophy: <Trophy className="w-5 h-5 text-gray-300" /> },
-    { rank: 3, player: "Bubble King", score: 11500, trophy: <Medal className="w-5 h-5 text-orange-400" /> },
-    { rank: 4, player: "Snake Master", score: 9800 },
-    { rank: 5, player: "Crypto Wizard", score: 8500 },
-    { rank: 6, player: "Gaming Legend", score: 7200 },
-    { rank: 7, player: "Arcade Champion", score: 6500 },
-    { rank: 8, player: "Bubble Popper", score: 5800 },
-    { rank: 9, player: "Score Hunter", score: 5200 },
-    { rank: 10, player: "Rising Star", score: 4800 }
-  ];
+  const [rankings, setRankings] = useState<LeaderboardEntry[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchLeaderboard = async () => {
+      try {
+        const response = await fetch(API_ENDPOINTS.LEADERBOARD, {
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        });
+        
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(
+            errorData.error || 
+            `Failed to fetch leaderboard: ${response.status} ${response.statusText}`
+          );
+        }
+        
+        const data = await response.json();
+        if (data.success) {
+          setRankings(data.leaderboard || []);
+        } else {
+          throw new Error(data.error || 'Failed to load leaderboard data');
+        }
+      } catch (err) {
+        console.error('Error fetching leaderboard:', err);
+        setError(err instanceof Error ? err.message : 'An unknown error occurred');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchLeaderboard();
+    
+    // Set up polling to refresh leaderboard every 30 seconds
+    const intervalId = setInterval(fetchLeaderboard, 30000);
+    
+    // Clean up interval on component unmount
+    return () => clearInterval(intervalId);
+  }, []);
+
+  const formatAddress = (address: string) => {
+    if (address.length <= 10) return address;
+    return `${address.slice(0, 6)}...${address.slice(-4)}`;
+  };
+
+  const getTrophy = (index: number) => {
+    switch (index) {
+      case 0: return <Crown className="w-5 h-5 text-yellow-400" />;
+      case 1: return <Trophy className="w-5 h-5 text-gray-300" />;
+      case 2: return <Medal className="w-5 h-5 text-orange-400" />;
+      default: return null;
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-950 via-indigo-950 via-purple-950 to-gray-950 text-white pt-20 pb-10 px-4 overflow-auto relative">
@@ -80,32 +134,63 @@ export default function LeaderboardPage() {
 
           {/* Rankings */}
           <div className="divide-y divide-yellow-500/20">
-            {rankings.map((entry) => (
-              <div 
-                key={entry.rank} 
-                className={`grid grid-cols-3 gap-4 items-center py-4 px-6 transition-all hover:bg-gradient-to-r ${
-                  entry.rank <= 3 
-                    ? `hover:from-yellow-900/40 hover:to-orange-900/40 ${entry.rank === 1 ? 'bg-gradient-to-r from-yellow-900/30 to-orange-900/30' : entry.rank === 2 ? 'bg-gradient-to-r from-gray-800/50 to-gray-700/50' : 'bg-gradient-to-r from-orange-900/20 to-yellow-900/20'}`
-                    : 'hover:bg-gray-800/60'
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  {entry.rank <= 3 && entry.trophy}
-                  <span className={`w-10 h-10 flex items-center justify-center rounded-full text-lg font-bold ${
-                    entry.rank === 1 ? 'bg-gradient-to-r from-yellow-500 to-orange-500 text-white shadow-lg ring-2 ring-yellow-400/50' :
-                    entry.rank === 2 ? 'bg-gradient-to-r from-gray-400 to-gray-300 text-gray-900 shadow-md ring-2 ring-gray-400/50' :
-                    entry.rank === 3 ? 'bg-gradient-to-r from-orange-600 to-orange-500 text-white shadow-md ring-2 ring-orange-400/50' :
-                    'bg-gray-800 border border-gray-700 text-gray-400'
-                  }`}>
-                    {entry.rank}
-                  </span>
-                </div>
-                <div className="font-semibold text-lg">{entry.player}</div>
-                <div className="text-right font-mono text-xl font-bold bg-gradient-to-r from-yellow-300 to-orange-300 bg-clip-text text-transparent">
-                  {entry.score.toLocaleString()}
-                </div>
+            {isLoading ? (
+              <div className="flex justify-center items-center py-12">
+                <Loader2 className="w-8 h-8 animate-spin text-yellow-400" />
+                <span className="ml-2">Loading leaderboard...</span>
               </div>
-            ))}
+            ) : error ? (
+              <div className="text-center py-12 text-red-400">
+                <p>Error loading leaderboard: {error}</p>
+                <button 
+                  onClick={() => window.location.reload()}
+                  className="mt-4 px-4 py-2 bg-yellow-500/20 text-yellow-400 rounded-lg hover:bg-yellow-500/30 transition-colors"
+                >
+                  Retry
+                </button>
+              </div>
+            ) : rankings.length === 0 ? (
+              <div className="text-center py-12 text-gray-400">
+                No leaderboard data available yet. Be the first to make a guess!
+              </div>
+            ) : (
+              rankings.map((entry, index) => (
+                <div 
+                  key={entry.address}
+                  className={`grid grid-cols-3 gap-4 items-center py-4 px-6 transition-all hover:bg-gradient-to-r ${
+                    index <= 2 
+                      ? `hover:from-yellow-900/40 hover:to-orange-900/40 ${index === 0 ? 'bg-gradient-to-r from-yellow-900/30 to-orange-900/30' : index === 1 ? 'bg-gradient-to-r from-gray-800/50 to-gray-700/50' : 'bg-gradient-to-r from-orange-900/20 to-yellow-900/20'}`
+                      : 'hover:bg-gray-800/60'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    {index <= 2 && getTrophy(index)}
+                    <span className={`w-10 h-10 flex items-center justify-center rounded-full text-lg font-bold ${
+                      index === 0 ? 'bg-gradient-to-r from-yellow-500 to-orange-500 text-white shadow-lg ring-2 ring-yellow-400/50' :
+                      index === 1 ? 'bg-gradient-to-r from-gray-400 to-gray-300 text-gray-900 shadow-md ring-2 ring-gray-400/50' :
+                      index === 2 ? 'bg-gradient-to-r from-orange-600 to-orange-500 text-white shadow-md ring-2 ring-orange-400/50' :
+                      'bg-gray-800 border border-gray-700 text-gray-400'
+                    }`}>
+                      {index + 1}
+                    </span>
+                  </div>
+                  <div className="font-semibold text-lg">
+                    {formatAddress(entry.address)}
+                    <div className="text-xs text-gray-400">
+                      {entry.correctGuesses}/{entry.totalGuesses} correct
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="font-mono text-xl font-bold bg-gradient-to-r from-yellow-300 to-orange-300 bg-clip-text text-transparent">
+                      {entry.totalPoints.toLocaleString()} pts
+                    </div>
+                    <div className="text-xs text-gray-400">
+                      {Math.round((entry.correctGuesses / (entry.totalGuesses || 1)) * 100)}% accuracy
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
 
           {/* Footer note */}
