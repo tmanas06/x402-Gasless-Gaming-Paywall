@@ -261,6 +261,7 @@ Respond with ONLY a JSON object in this exact format:
   async processPayment(invoice: X402Invoice): Promise<{
     success: boolean;
     txHash?: string;
+    signature?: string;
     error?: string;
   }> {
     try {
@@ -281,22 +282,22 @@ Respond with ONLY a JSON object in this exact format:
         };
       }
 
-      // Simulate payment signature (in production, use EIP-3009)
-      const paymentSignature = this.generateEIP3009Signature(invoice);
+      // Generate EIP-3009 signature for USDC.e transfer
+      const signature = await this.generateAndSignEIP3009Transfer(
+        invoice["X-Payment-To"] || "",
+        invoice["X-Payment-Amount"] || "0"
+      );
 
       // Update daily spending
       this.dailySpending += amountInUsdc;
 
       console.log(`  ✓ Payment authorized`);
-      console.log(`  ✓ Signature: ${paymentSignature.substring(0, 20)}...`);
-
-      // In production, submit the actual USDC transfer here
-      // For now, return mock tx hash
-      const mockTxHash = `0x${Date.now().toString(16)}${Math.random().toString(16).substring(2)}`;
+      console.log(`  ✓ Signature: ${signature.substring(0, 30)}...`);
 
       return {
         success: true,
-        txHash: mockTxHash,
+        signature,
+        txHash: `0x${Date.now().toString(16)}`, // Mock tx hash
       };
     } catch (error) {
       console.error(`  ✗ Payment failed:`, error);
@@ -307,9 +308,59 @@ Respond with ONLY a JSON object in this exact format:
     }
   }
 
+  private async generateAndSignEIP3009Transfer(
+    to: string,
+    amount: string
+  ): Promise<string> {
+    try {
+      // EIP-712 domain for USDC.e on Cronos testnet (chain ID 338)
+      const domain = {
+        name: "USD Coin",
+        version: "2",
+        chainId: 338,
+        verifyingContract: process.env.USDC_T3 || "0xc21223249CA28397B4B6541dfFaEcC539BfF0c59",
+      };
+
+      // EIP-3009 TransferWithAuthorization type definition
+      const types = {
+        TransferWithAuthorization: [
+          { name: "from", type: "address" },
+          { name: "to", type: "address" },
+          { name: "value", type: "uint256" },
+          { name: "validAfter", type: "uint256" },
+          { name: "validBefore", type: "uint256" },
+          { name: "nonce", type: "bytes32" },
+        ],
+      };
+
+      // Generate random nonce
+      const nonce = ethers.randomBytes(32);
+      const now = Math.floor(Date.now() / 1000);
+      const validBefore = now + parseInt(process.env.GAME_MAX_TIMEOUT || "300");
+
+      // Create the transfer message
+      const value = {
+        from: this.wallet.address,
+        to: to,
+        value: amount,
+        validAfter: 0,
+        validBefore: validBefore,
+        nonce: nonce,
+      };
+
+      // Sign the EIP-712 message
+      const signature = await this.wallet.signTypedData(domain, types, value);
+
+      // Return base64 encoded signature for X-PAYMENT header
+      return Buffer.from(signature.substring(2), "hex").toString("base64");
+    } catch (error) {
+      console.error("Error generating EIP-3009 signature:", error);
+      throw error;
+    }
+  }
+
   private generateEIP3009Signature(invoice: X402Invoice): string {
-    // EIP-3009 signature generation for approved USDC transfers
-    // In production, use ethers.js to sign the actual transfer
+    // Legacy method - kept for compatibility
     const data = JSON.stringify({
       invoiceId: invoice.id,
       amount: invoice["X-Payment-Amount"],
@@ -323,21 +374,35 @@ Respond with ONLY a JSON object in this exact format:
   async run() {
     console.log("🤖 Gasless Arcade Auto-Pay Agent Started\n");
 
+    // Check agent configuration
+    const agentBalance = await this.provider.getBalance(this.wallet.address);
+    console.log(`  Agent Address: ${this.wallet.address}`);
+    console.log(`  Agent Balance: ${ethers.formatEther(agentBalance)} tCRO`);
+    console.log(`  Chain ID: 338 (Cronos Testnet)`);
+    console.log(`  USDC.e Contract: ${process.env.USDC_T3}`);
+    console.log(`  Game API: ${this.gameApiUrl}`);
+    console.log(`  Auto-Pay Enabled: ${this.rules.autoPayEnabled}`);
+    console.log(`  Max Payment Per Tx: ${this.rules.maxPaymentPerTx} USDC`);
+    console.log(`  Daily Spending Limit: ${this.rules.dailySpendingLimit} USDC\n`);
+
+    if (agentBalance === 0n) {
+      console.warn(
+        "⚠️  Agent balance is 0. The agent won't be able to pay invoices."
+      );
+    }
+
     // Poll for invoices periodically
     setInterval(async () => {
       try {
         // In production, this would listen to 402 responses from the game API
-        // For now, just log that it's running
-        const agentBalance = await this.provider.getBalance(this.wallet.address);
-        if (agentBalance === 0n) {
-          console.warn(
-            "⚠️  Agent balance is 0. The agent won't be able to pay invoices."
-          );
+        const currentBalance = await this.provider.getBalance(this.wallet.address);
+        if (currentBalance > 0n) {
+          console.log(`📡 Agent listening... (Balance: ${ethers.formatEther(currentBalance)} tCRO)`);
         }
       } catch (error) {
         console.error("Error in agent loop:", error);
       }
-    }, 5000);
+    }, 30000);
 
     // Keep the agent running
     console.log("📡 Agent listening for x402 invoices...\n");

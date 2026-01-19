@@ -62,38 +62,14 @@ export default function SnakeGame() {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Clear canvas
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
-    // Draw food
-    ctx.fillStyle = '#FF6B6B';
-    ctx.fillRect(
-      foodRef.current.x * cellSize,
-      foodRef.current.y * cellSize,
-      cellSize - 1,
-      cellSize - 1
-    );
-
-    // Draw snake
-    snakeRef.current.forEach((segment, index) => {
-      // Head is a different color
-      if (index === 0) {
-        ctx.fillStyle = '#45B7D1';
-      } else {
-        ctx.fillStyle = '#4ECDC4';
-      }
-      ctx.fillRect(
-        segment.x * cellSize,
-        segment.y * cellSize,
-        cellSize - 1,
-        cellSize - 1
-      );
-    });
+    // Draw background
+    ctx.fillStyle = '#1F2937';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     // Draw grid
-    ctx.strokeStyle = '#2D3748';
+    ctx.strokeStyle = '#374151';
     ctx.lineWidth = 0.5;
-    for (let i = 0; i < GRID_SIZE; i++) {
+    for (let i = 0; i <= GRID_SIZE; i++) {
       // Vertical lines
       ctx.beginPath();
       ctx.moveTo(i * cellSize, 0);
@@ -101,23 +77,6 @@ export default function SnakeGame() {
       ctx.stroke();
       
       // Horizontal lines
-      ctx.beginPath();
-      ctx.moveTo(0, i * cellSize);
-      ctx.lineTo(GRID_SIZE * cellSize, i * cellSize);
-      ctx.stroke();
-    }
-    ctx.fillStyle = '#1F2937';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    // Draw grid
-    ctx.strokeStyle = '#374151';
-    ctx.lineWidth = 0.5;
-    for (let i = 0; i < GRID_SIZE; i++) {
-      ctx.beginPath();
-      ctx.moveTo(i * cellSize, 0);
-      ctx.lineTo(i * cellSize, GRID_SIZE * cellSize);
-      ctx.stroke();
-      
       ctx.beginPath();
       ctx.moveTo(0, i * cellSize);
       ctx.lineTo(GRID_SIZE * cellSize, i * cellSize);
@@ -135,7 +94,7 @@ export default function SnakeGame() {
       );
     });
 
-    // Draw food
+    // Draw food as a circle
     ctx.fillStyle = '#EC4899';
     ctx.beginPath();
     const centerX = foodRef.current.x * cellSize + cellSize / 2;
@@ -143,7 +102,7 @@ export default function SnakeGame() {
     const radius = cellSize / 2 - 2;
     ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
     ctx.fill();
-  }, []);
+  }, [cellSize]);
 
   // Initialize game
   const initGame = useCallback(() => {
@@ -175,142 +134,12 @@ export default function SnakeGame() {
     setGameOver(false);
     
     // Draw initial state
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    
-    // Clear canvas
-    ctx.fillStyle = '#1F2937';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    
-    // Draw initial snake and food
     drawGame();
-  }, [drawGame, generateFood]);
-
-  // Game loop
-  const gameLoop = useCallback(() => {
-    if (gameOver || !isPlaying) return;
-
-    // Update direction
-    directionRef.current = nextDirectionRef.current;
-
-    // Move snake
-    const head = { ...snakeRef.current[0] };
-    
-    switch (directionRef.current) {
-      case 'UP': head.y--; break;
-      case 'DOWN': head.y++; break;
-      case 'LEFT': head.x--; break;
-      case 'RIGHT': head.x++; break;
-    }
-
-    // Check collision with walls
-    if (
-      head.x < 0 || 
-      head.x >= GRID_SIZE || 
-      head.y < 0 || 
-      head.y >= GRID_SIZE ||
-      // Check collision with self
-      snakeRef.current.some((segment, index) => 
-        index > 0 && segment.x === head.x && segment.y === head.y
-      )
-    ) {
-      setGameOver(true);
-      setIsPlaying(false);
-      if (score > highScore) {
-        setHighScore(score);
-      }
-      return;
-    }
-
-    // Add new head
-    const newSnake = [head, ...snakeRef.current];
-
-    // Check if food is eaten
-    if (head.x === foodRef.current.x && head.y === foodRef.current.y) {
-      setScore(prev => prev + 10);
-      generateFood();
-    } else {
-      // Remove tail if no food is eaten
-      newSnake.pop();
-    }
-
-    snakeRef.current = newSnake;
-
-    // Draw everything
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
-    // Draw food
-    ctx.fillStyle = '#FF6B6B';
-    ctx.fillRect(
-      foodRef.current.x * cellSize,
-      foodRef.current.y * cellSize,
-      cellSize - 1,
-      cellSize - 1
-    );
-
-    // Draw snake
-    ctx.fillStyle = '#4ECDC4';
-    snakeRef.current.forEach((segment, index) => {
-      // Head is a different color
-      if (index === 0) {
-        ctx.fillStyle = '#45B7D1';
-      } else {
-        ctx.fillStyle = '#4ECDC4';
-      }
-      ctx.fillRect(
-        segment.x * cellSize,
-        segment.y * cellSize,
-        cellSize - 1,
-        cellSize - 1
-      );
-    });
-
-    // Draw grid
-    ctx.strokeStyle = '#2D3748';
-    ctx.lineWidth = 0.5;
-    for (let i = 0; i < GRID_SIZE; i++) {
-      // Vertical lines
-      ctx.beginPath();
-      ctx.moveTo(i * cellSize, 0);
-      ctx.lineTo(i * cellSize, GRID_SIZE * cellSize);
-      ctx.stroke();
-      
-      // Horizontal lines
-      ctx.beginPath();
-      ctx.moveTo(0, i * cellSize);
-      ctx.lineTo(GRID_SIZE * cellSize, i * cellSize);
-      ctx.stroke();
-    }
-  }, [gameOver, score, highScore, cellSize]);
-
-  // Handle keyboard controls
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (!isPlaying) return;
-      
-      switch (e.key) {
-        case 'ArrowUp':
-          if (directionRef.current !== 'DOWN') nextDirectionRef.current = 'UP';
-          break;
-        case 'ArrowDown':
-          if (directionRef.current !== 'UP') nextDirectionRef.current = 'DOWN';
-          break;
-        case 'ArrowLeft':
-          if (directionRef.current !== 'RIGHT') nextDirectionRef.current = 'LEFT';
-          break;
-        case 'ArrowRight':
-          if (directionRef.current !== 'LEFT') nextDirectionRef.current = 'RIGHT';
-          break;
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isPlaying]);
+  }, [cellSize, drawGame, generateFood]);
 
   // Game loop effect
   useEffect(() => {
-    if (!isPlaying) return;
+    if (!isPlaying || gameOver) return;
 
     const gameStep = () => {
       // Update direction
@@ -339,7 +168,6 @@ export default function SnakeGame() {
       ) {
         setGameOver(true);
         setIsPlaying(false);
-        setHighScore(prev => Math.max(prev, score));
         return;
       }
 
@@ -363,7 +191,7 @@ export default function SnakeGame() {
 
     const interval = setInterval(gameStep, GAME_SPEED);
     return () => clearInterval(interval);
-  }, [isPlaying, gameOver, score, generateFood, drawGame]);
+  }, [isPlaying, gameOver, generateFood, drawGame]);
 
   // Handle responsive canvas sizing
   useLayoutEffect(() => {
@@ -402,6 +230,13 @@ export default function SnakeGame() {
   useEffect(() => {
     initGame();
   }, [initGame]);
+
+  // Update high score when game over
+  useEffect(() => {
+    if (gameOver && score > highScore) {
+      setHighScore(score);
+    }
+  }, [gameOver, score, highScore]);
 
   // Check wallet connection and calculate reward
   useEffect(() => {

@@ -67,21 +67,23 @@ app.get("/api/play", async (req: Request, res: Response) => {
     const freePlayCount = gameService.getFreePlayCount(address);
 
     if (freePlayCount >= parseInt(process.env.GAME_FREE_PLAYS || "3")) {
-      // Return 402 Payment Required with x402 headers
-      const invoice = paymentService.generateInvoice(address);
+      // Return 402 Payment Required with x402 paymentRequirements
+      const paymentRequirements = paymentService.generatePaymentRequirements();
 
       res.status(402).set({
-        "X-Payment-Required": "true",
-        "X-Payment-Amount": process.env.GAME_FEE_AMOUNT || "10000000",
-        "X-Payment-Currency": process.env.GAME_FEE_CURRENCY || "USDC",
-        "X-Payment-Network": "cronos-t3",
-        "X-Payment-To": process.env.FACILITATOR_ADDRESS || "",
-        "X-Payment-Description": "Continue playing Gasless Arcade",
-        "X-Invoice-Id": invoice.id,
+        "Content-Type": "application/json",
       }).json({
+        status: 402,
         error: "Payment required",
-        message: "Pay 0.01 USDC to continue playing",
-        invoice,
+        message: "Premium access requires payment of 0.01 USDC",
+        paymentRequirements: {
+          scheme: paymentRequirements.scheme,
+          network: paymentRequirements.network,
+          payTo: paymentRequirements.payTo,
+          asset: paymentRequirements.asset,
+          maxAmountRequired: paymentRequirements.maxAmountRequired,
+          maxTimeoutSeconds: paymentRequirements.maxTimeoutSeconds,
+        },
       });
     } else {
       // Allow free play
