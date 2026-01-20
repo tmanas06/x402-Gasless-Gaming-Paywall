@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { Home, Gamepad2, Trophy, Settings, User, Bot } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -47,9 +48,17 @@ export default function MainNavbar() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16 items-center">
           <div className="flex items-center">
-            <Link href="/" className="flex-shrink-0 flex items-center">
+            <Link href="/" className="flex-shrink-0 flex items-center gap-2">
+              <Image
+                src="/x402-logo.png"
+                alt="x402 Gasless Gaming"
+                width={36}
+                height={36}
+                className="rounded-xl shadow-md"
+                priority
+              />
               <span className="text-xl font-bold bg-gradient-to-r from-purple-400 to-blue-500 bg-clip-text text-transparent">
-                🎮 Gasless Arcade
+                Gasless Arcade
               </span>
             </Link>
             <nav className="hidden md:ml-10 md:flex space-x-8">

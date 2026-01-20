@@ -9,8 +9,12 @@ const inter = Inter({ subsets: ['latin'] })
 export const metadata: Metadata = {
   title: 'Gaming DApp - Blockchain Gaming Platform',
   description: 'Experience fun and interactive blockchain gaming on Cronos!',
-  generator: 'Next.js',
-  icons: { icon: '/placeholder-logo.png' },
+  generator: ' Next.js',
+  icons: {
+    icon: '/x402-logo.png',
+    shortcut: '/x402-logo.png',
+    apple: '/x402-logo.png',
+  },
 }
 
 export const viewport = {
