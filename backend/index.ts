@@ -58,6 +58,29 @@ app.get("/api/agent/stats", (req: Request, res: Response) => {
   res.json(agentDashboardService.getStats());
 });
 
+// Convenience endpoints used by some frontends:
+// - /api/agent/balance  -> { balance, currency }
+// - /api/agent/spend    -> { todaysSpend, dailyLimit, currency }
+// - /api/agent/history  -> { payments }
+app.get("/api/agent/balance", (req: Request, res: Response) => {
+  const stats = agentDashboardService.getStats();
+  res.json({ balance: stats.balance, currency: stats.currency });
+});
+
+app.get("/api/agent/spend", (req: Request, res: Response) => {
+  const stats = agentDashboardService.getStats();
+  res.json({
+    todaysSpend: stats.todaysSpend,
+    dailyLimit: stats.dailyLimit,
+    currency: stats.currency,
+  });
+});
+
+app.get("/api/agent/history", (req: Request, res: Response) => {
+  const stats = agentDashboardService.getStats();
+  res.json({ payments: stats.payments });
+});
+
 // Add a payment record (for wiring from game flows later; currently useful for testing/demo)
 app.post("/api/agent/payments", (req: Request, res: Response) => {
   const { game, amount, currency, status } = req.body || {};
