@@ -31,6 +31,11 @@ export default function MainNavbar() {
       icon: Bot,
     },
     {
+      name: 'Agent Dashboard',
+      href: '/agent',
+      icon: Settings,
+    },
+    {
       name: 'Profile',
       href: '/profile',
       icon: User,

@@ -68,13 +68,15 @@ Since Vercel doesn't natively support multiple root directories in a single proj
    - Go to [Vercel Dashboard](https://vercel.com/dashboard)
    - Click "Add New Project"
    - Import your GitHub repository
-   - Set **Root Directory** to `frontend`
+   - **IMPORTANT**: Set **Root Directory** to `frontend`
+   - This is critical - Vercel needs to know where your Next.js app is located
 
 2. **Configure Build Settings:**
-   - Framework Preset: Next.js
+   - Framework Preset: Next.js (should auto-detect)
    - Build Command: `npm run build` (auto-detected)
    - Output Directory: `.next` (auto-detected)
    - Install Command: `npm install` (auto-detected)
+   - **Note**: If Next.js is not detected, verify Root Directory is set to `frontend`
 
 3. **Set Environment Variables:**
    ```
