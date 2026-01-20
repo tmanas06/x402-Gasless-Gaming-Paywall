@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CheckCircle2, Wallet, Receipt, RefreshCw, ShieldCheck } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -19,37 +19,35 @@ type AgentStats = {
   dailyLimit: number;
   currency: string;
   payments: Payment[];
+  updatedAt?: number;
 };
 
-// NOTE: This is a placeholder for future backend integration.
-// Replace this with a real API call (e.g. fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/agent/stats`))
 async function fetchAgentStats(): Promise<AgentStats> {
-  // Simulate network latency
-  await new Promise((resolve) => setTimeout(resolve, 400));
-
-  return {
-    balance: 0.25,
-    todaysSpend: 0.03,
-    dailyLimit: 0.1,
-    currency: "USDC",
-    payments: [
-      { game: "SnakeGame", amount: 0.01, currency: "USDC", status: "success" },
-      { game: "CryptoDodger", amount: 0.01, currency: "USDC", status: "success" },
-      { game: "GuessTheMarket", amount: 0.01, currency: "USDC", status: "success" },
-    ],
-  };
+  const res = await fetch("/api/agent/stats", { cache: "no-store" });
+  if (!res.ok) throw new Error(`Failed to fetch agent stats: ${res.status}`);
+  return res.json();
 }
 
 export default function AgentDashboardPage() {
   const [stats, setStats] = useState<AgentStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const lastUpdatedLabel = useMemo(() => {
+    if (!stats?.updatedAt) return null;
+    const d = new Date(stats.updatedAt);
+    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  }, [stats?.updatedAt]);
 
   const loadStats = async () => {
     try {
       setIsRefreshing(true);
+      setError(null);
       const data = await fetchAgentStats();
       setStats(data);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load agent stats");
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -58,6 +56,15 @@ export default function AgentDashboardPage() {
 
   useEffect(() => {
     loadStats();
+  }, []);
+
+  // Keep the dashboard dynamic by polling for updates
+  useEffect(() => {
+    const interval = setInterval(() => {
+      loadStats();
+    }, 10_000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const formatAmount = (value: number, currency: string) =>
@@ -74,6 +81,15 @@ export default function AgentDashboardPage() {
             <p className="mt-2 text-sm md:text-base text-gray-300">
               Monitor your gasless gaming payments and auto-pay allowance in real time.
             </p>
+            {error ? (
+              <p className="mt-2 text-sm text-red-300">
+                {error}
+              </p>
+            ) : lastUpdatedLabel ? (
+              <p className="mt-2 text-xs text-gray-400">
+                Last updated: {lastUpdatedLabel}
+              </p>
+            ) : null}
           </div>
           <Badge
             variant="outline"
@@ -204,9 +220,30 @@ export default function AgentDashboardPage() {
                         {formatAmount(payment.amount, payment.currency)}
                       </span>
                     </div>
-                    <div className="flex items-center gap-1 text-emerald-400">
-                      <span className="text-xs">✓</span>
-                      <span className="text-xs">Success</span>
+                    <div
+                      className={cn(
+                        "flex items-center gap-1",
+                        payment.status === "success"
+                          ? "text-emerald-400"
+                          : payment.status === "pending"
+                          ? "text-yellow-300"
+                          : "text-red-300"
+                      )}
+                    >
+                      <span className="text-xs">
+                        {payment.status === "success"
+                          ? "✓"
+                          : payment.status === "pending"
+                          ? "…"
+                          : "×"}
+                      </span>
+                      <span className="text-xs">
+                        {payment.status === "success"
+                          ? "Success"
+                          : payment.status === "pending"
+                          ? "Pending"
+                          : "Failed"}
+                      </span>
                     </div>
                   </div>
                 ))}

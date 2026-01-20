@@ -8,6 +8,7 @@ import { RewardService } from "./services/rewardService";
 import { AIChatService } from "./services/aiChatService";
 import { MarketService } from "./services/marketService";
 import { createLeaderboardService } from "./services/leaderboardService";
+import { AgentDashboardService } from "./services/agentDashboardService";
 
 dotenv.config();
 
@@ -30,6 +31,7 @@ app.use(express.json());
 const paymentService = new PaymentService();
 const gameService = new GameService();
 const marketService = new MarketService();
+const agentDashboardService = new AgentDashboardService();
 let rewardService: RewardService;
 let leaderboardService: ReturnType<typeof createLeaderboardService>;
 let aiChatService: AIChatService;
@@ -49,6 +51,32 @@ try {
 // Health check
 app.get("/health", (req: Request, res: Response) => {
   res.json({ status: "ok", timestamp: new Date() });
+});
+
+// Agent dashboard stats (dynamic, persisted)
+app.get("/api/agent/stats", (req: Request, res: Response) => {
+  res.json(agentDashboardService.getStats());
+});
+
+// Add a payment record (for wiring from game flows later; currently useful for testing/demo)
+app.post("/api/agent/payments", (req: Request, res: Response) => {
+  const { game, amount, currency, status } = req.body || {};
+
+  if (!game || typeof game !== "string") {
+    return res.status(400).json({ error: "game (string) is required" });
+  }
+  if (typeof amount !== "number") {
+    return res.status(400).json({ error: "amount (number) is required" });
+  }
+
+  agentDashboardService.addPayment({
+    game,
+    amount,
+    currency: typeof currency === "string" ? currency : "USDC",
+    status: status === "pending" || status === "failed" ? status : "success",
+  });
+
+  return res.json({ success: true });
 });
 
 // Game play endpoint with x402 paywall
